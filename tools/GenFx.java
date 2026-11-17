@@ -111,7 +111,15 @@ public final class GenFx {
                 // 备份失败不影响生成
             }
         }
-        BufferedImage src = swordSprite();
+        // 形状是硬约束：**必须**用原始 16×16 素材的 alpha 蒙版，一个像素都不能多也不能少。
+        // 允许改的只有颜色：描边重画成金属渐变，内部重画成星空。
+        BufferedImage src = Files.exists(backupPng)
+                ? ImageIO.read(backupPng.toFile())
+                : ImageIO.read(swordPng.toFile());
+        if (src.getHeight() != SRC) {
+            throw new IllegalStateException("original sprite must be 16x16, got "
+                    + src.getWidth() + "x" + src.getHeight());
+        }
         if (src.getWidth() != SRC || src.getHeight() != SRC) {
             throw new IllegalStateException("sprite must be 16x16, got " + src.getWidth() + "x" + src.getHeight());
         }
@@ -202,7 +210,7 @@ public final class GenFx {
                     int out;
 
                     if (locked[y][x]) {
-                        out = px; // 原图最外圈：一个字节都不改
+                        out = 0xFF000000 | edgePixel(x, y, px);   // 描边重画（位置不变）
                     } else if (opaque[y][x]) {
                         out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
                     } else if (glow[y][x] > 0.002) {
@@ -229,9 +237,11 @@ public final class GenFx {
             for (int y = 0; y < FRAME; y++) {
                 for (int x = 0; x < FRAME; x++) {
                     int got = check.getRGB(x, f * FRAME + y);
-                    if (locked[y][x] && got != base[y][x]) badBorder++;
-                    boolean shouldBeEmpty = !opaque[y][x] && glow[y][x] <= 0.002;
-                    if (shouldBeEmpty && ((got >>> 24) & 255) != 0) badTransparent++;
+                    // 形状是硬约束：每个像素的"有/无"必须和原图完全一致
+                    boolean gotOpaque = ((got >>> 24) & 255) != 0;
+                    boolean wantOpaque = opaque[y][x] || glow[y][x] > 0.002;
+                    if (gotOpaque != wantOpaque) badBorder++;
+                    if (locked[y][x] && got != (0xFF000000 | edgePixel(x, y, base[y][x]))) badBorder++;
                 }
             }
         }
@@ -241,7 +251,7 @@ public final class GenFx {
                 int px = base[y][x];
                 int rerender;
                 if (locked[y][x]) {
-                    rerender = px;
+                    rerender = 0xFF000000 | edgePixel(x, y, px);
                 } else if (opaque[y][x]) {
                     rerender = 0xFF000000 | spacePixel(x, y, 2 * Math.PI, edgePx[y][x]);
                 } else if (glow[y][x] > 0.002) {
@@ -469,6 +479,21 @@ public final class GenFx {
         return img;
     }
 
+    /**
+     * 描边像素的颜色：沿剑身从剑尖（冷白）到剑柄（青）的渐变。
+     *
+     * <p>形状固定不变，改变的只有颜色——所以这里不引用原图像素，而是纯函数。
+     */
+    static int edgePixel(int x, int y, int original) {
+        double u = (x - MARGIN + 0.5) / SCALE;
+        double v = (y - MARGIN + 0.5) / SCALE;
+        double s01 = clamp01((((u - v) * 0.70710678) + 11.0) / 22.0);
+        int c = lerp(0xe6fdff, 0x2f9fc4, smooth(0.0, 1.0, s01));
+        // 用原图的明暗当"体积"：形状不动、色相换成冷青，但高光/暗部结构保留下来，
+        // 否则整把剑会变成一个平涂的剪影，没有厚度。
+        double shade = 0.55 + 0.95 * lum(original);
+        return scaleRgb(c, shade);
+    }
     /**
      * 剑身内部的一个像素：这里**不混原图颜色**，整块换成"空间"——
      * 深空底色 + 沿剑身流动的星云 + 稀疏星点，再用刃口内缘的一圈冷光做出厚度。
