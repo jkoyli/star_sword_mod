@@ -234,9 +234,11 @@ public final class GenFx {
                     int out;
 
                     if (opaque[y][x]) {
-                        // 贴图只当**遮罩**：中间什么都不画，星空由 cosmic 着色器实时生成。
-                        // 这里保留一点点原图明暗，只为着色器没起来时还能看出是把剑。
-                        out = 0xFF000000 | maskPixel(x, y, px);
+                        // 贴图同时承担两件事：
+                        //   1) alpha = 形状（cosmic 着色器用它裁剪）；
+                        //   2) RGB    = "哪些像素要保留原色"——最外圈保留原图颜色，
+                        //      内部刷成纯黑，着色器按亮度混合：亮处用贴图色，黑处铺星空。
+                        out = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
                     } else if (glow[y][x] > 0.002) {
                         out = glowPixel(x, y, phase, px, glow[y][x]);
                     } else {
@@ -264,7 +266,7 @@ public final class GenFx {
                     boolean gotOpaque = ((got >>> 24) & 255) != 0;
                     boolean wantOpaque = opaque[y][x] || (outside[y][x] && glow[y][x] > 0.002);
                     if (gotOpaque != wantOpaque) badBorder++;
-                    if (locked[y][x] && got != (0xFF000000 | maskPixel(x, y, base[y][x]))) badBorder++;
+                    if (locked[y][x] && got != (0xFF000000 | maskPixel(x, y, base[y][x], true))) badBorder++;
                 }
             }
         }
@@ -274,9 +276,9 @@ public final class GenFx {
                 int px = base[y][x];
                 int rerender;
                 if (locked[y][x]) {
-                    rerender = 0xFF000000 | maskPixel(x, y, px);
+                    rerender = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
                 } else if (opaque[y][x]) {
-                    rerender = 0xFF000000 | maskPixel(x, y, px);
+                    rerender = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
                 } else if (glow[y][x] > 0.002) {
                     rerender = glowPixel(x, y, 2 * Math.PI, px, glow[y][x]);
                 } else {
@@ -524,8 +526,12 @@ public final class GenFx {
      * 之前那版把星空烘进贴图、再叠一层，颜色和着色器互相打架，才会又暗又糊。
      * 这里只留一个很浅的底色（跟着原图明暗走），保证着色器没起来时还能看出是把剑。
      */
-    static int maskPixel(int x, int y, int original) {
-        return lerp(0xbfe8f5, 0xffffff, lum(original));
+    static int maskPixel(int x, int y, int original, boolean outline) {
+        if (outline) {
+            // 最外圈：原样返回，着色器会把它原封不动画出来
+            return original & 0xFFFFFF;
+        }
+        return 0x000000;
     }
     /**
      * 轮廓像素的颜色：同样是星空，但整体提亮 + 沿剑身渐变，
