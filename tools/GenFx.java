@@ -113,6 +113,10 @@ public final class GenFx {
         }
         // 形状是硬约束：**必须**用原始 16×16 素材的 alpha 蒙版，一个像素都不能多也不能少。
         // 允许改的只有颜色：描边重画成金属渐变，内部重画成星空。
+        // 星空格子清单：'#' = 该像素换成星空，'.' = 原样保留。
+        // 由 tools/sword_star_cells.txt 提供（从用户标注图里提取），不存在就用内置默认。
+        boolean[][] starCell = loadStarCells(root);
+
         BufferedImage src = Files.exists(backupPng)
                 ? ImageIO.read(backupPng.toFile())
                 : ImageIO.read(swordPng.toFile());
@@ -236,9 +240,11 @@ public final class GenFx {
                     if (opaque[y][x]) {
                         // 贴图同时承担两件事：
                         //   1) alpha = 形状（cosmic 着色器用它裁剪）；
-                        //   2) RGB    = "哪些像素要保留原色"——最外圈保留原图颜色，
-                        //      内部刷成纯黑，着色器按亮度混合：亮处用贴图色，黑处铺星空。
-                        out = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
+                        //   2) RGB    = 哪些像素"让位给星空"——清单里的格子刷成纯黑，
+                        //      其余像素**原样保留**。着色器按亮度混合：亮处画贴图色，黑处铺星空。
+                        int su = (x - MARGIN) / SCALE;
+                        int sv = (y - MARGIN) / SCALE;
+                        out = 0xFF000000 | maskPixel(su, sv, px, starCell[sv][su]);
                     } else if (glow[y][x] > 0.002) {
                         out = glowPixel(x, y, phase, px, glow[y][x]);
                     } else {
@@ -266,7 +272,7 @@ public final class GenFx {
                     boolean gotOpaque = ((got >>> 24) & 255) != 0;
                     boolean wantOpaque = opaque[y][x] || (outside[y][x] && glow[y][x] > 0.002);
                     if (gotOpaque != wantOpaque) badBorder++;
-                    if (locked[y][x] && got != (0xFF000000 | maskPixel(x, y, base[y][x], true))) badBorder++;
+                    if (locked[y][x] && ((got >>> 24) & 255) == 0) badBorder++;   // 轮廓像素不许丢
                 }
             }
         }
@@ -276,9 +282,9 @@ public final class GenFx {
                 int px = base[y][x];
                 int rerender;
                 if (locked[y][x]) {
-                    rerender = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
+                    rerender = 0xFF000000 | maskPixel((x - MARGIN) / SCALE, (y - MARGIN) / SCALE, px, starCell[(y - MARGIN) / SCALE][(x - MARGIN) / SCALE]);
                 } else if (opaque[y][x]) {
-                    rerender = 0xFF000000 | maskPixel(x, y, px, locked[y][x]);
+                    rerender = 0xFF000000 | maskPixel((x - MARGIN) / SCALE, (y - MARGIN) / SCALE, px, starCell[(y - MARGIN) / SCALE][(x - MARGIN) / SCALE]);
                 } else if (glow[y][x] > 0.002) {
                     rerender = glowPixel(x, y, 2 * Math.PI, px, glow[y][x]);
                 } else {
@@ -526,12 +532,49 @@ public final class GenFx {
      * 之前那版把星空烘进贴图、再叠一层，颜色和着色器互相打架，才会又暗又糊。
      * 这里只留一个很浅的底色（跟着原图明暗走），保证着色器没起来时还能看出是把剑。
      */
-    static int maskPixel(int x, int y, int original, boolean outline) {
-        if (outline) {
-            // 最外圈：原样返回，着色器会把它原封不动画出来
-            return original & 0xFFFFFF;
+    static int maskPixel(int u, int v, int original, boolean star) {
+        // star = true：这一格让位给星空 → 涂纯黑（着色器按亮度判断"这里铺星空"）
+        // star = false：原样保留原图像素
+        return star ? 0x000000 : (original & 0xFFFFFF);
+    }
+
+    /** 读 tools/sword_star_cells.txt：'#' = 铺星空，'.' = 原样保留。缺文件时用内置默认。 */
+    static boolean[][] loadStarCells(Path root) {
+        String[] fallback = {
+                "................",
+                "................",
+                ".............#..",
+                "...........###..",
+                "...........##...",
+                "................",
+                ".........#......",
+                "....#..###......",
+                "...#...##.......",
+                "................",
+                ".....#..........",
+                "....#.#..#......",
+                "...#...##.......",
+                ".......#........",
+                "................",
+                "................",
+        };
+        boolean[][] cells = new boolean[SRC][SRC];
+        String[] lines = fallback;
+        Path file = root.resolve("tools/sword_star_cells.txt");
+        if (Files.exists(file)) {
+            try {
+                lines = Files.readAllLines(file).toArray(new String[0]);
+            } catch (Exception ignored) {
+                lines = fallback;
+            }
         }
-        return 0x000000;
+        for (int v = 0; v < SRC && v < lines.length; v++) {
+            String line = lines[v].trim();
+            for (int u = 0; u < SRC && u < line.length(); u++) {
+                cells[v][u] = line.charAt(u) == '#';
+            }
+        }
+        return cells;
     }
     /**
      * 轮廓像素的颜色：同样是星空，但整体提亮 + 沿剑身渐变，

@@ -106,7 +106,10 @@ void main() {
     // 贴图 RGB 决定"哪些像素保留原色"：
     // 最外圈被画成原图的颜色（亮），内部是纯黑。
     // 所以按亮度混合——亮的地方用贴图色（= 原图的剑身轮廓），黑的地方铺星空。
-    float keep = smoothstep(0.22, 0.55, dot(mask.rgb, vec3(0.299, 0.587, 0.114)));
+    // 现在是**二值**的：贴图里被涂成纯黑的格子 = 星空，其余 = 原图颜色。
+    // 用 step 而不是 smoothstep，避免中间调也被掺进星星（那样整把剑都会发花）。
+    float lum = dot(mask.rgb, vec3(0.299, 0.587, 0.114));
+    float keep = step(0.02, lum);
     col = mix(col, mask.rgb * (0.55 + 0.55 * max(vColor.r, 0.35)), keep);
 
     // 遮罩决定形状：贴图 alpha 之外一律不画。
