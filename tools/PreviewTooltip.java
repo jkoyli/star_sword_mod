@@ -33,6 +33,7 @@ public final class PreviewTooltip {
         Layer streak = new Layer("blackhole_streak.png");
         // 星云是运行时算出来的，这里复刻一份固定时刻的帧
         Layer nebula = new Layer(nebulaPixels(1.7), NEB_SIZE, NEB_SIZE);
+        Layer stars = new Layer("blackhole_stars.png");
 
         int cardW = 240;
         int cardH = 84;
@@ -56,7 +57,7 @@ public final class PreviewTooltip {
         float diameter = Math.min(GUTTER, cardH) * 0.94F * PX;
 
         long now = Long.parseLong(System.getProperty("t", "1700"));
-        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula);
+        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula, stars);
 
         // 文字区的横向渐隐底（与 BlackHoleCard 的 32 条竖带一致）
         int scrimRight = (cardW - PAD - GUTTER) * PX;
@@ -74,12 +75,21 @@ public final class PreviewTooltip {
     }
 
     private static void drawBlackHole(int[] canvas, int w, int h, float cx, float cy, float diameter, long now,
-                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak, Layer nebula) {
+                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak, Layer nebula, Layer stars) {
         float angle = now * 0.00060F;
         float breathe = 1.0F + 0.02F * (float) Math.sin(now * 0.0016F);
         float d = diameter * breathe;
 
-        nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.15F, 1.0F, -angle * 0.40F, 0x78FFFFFF);
+        float scrollX = (now * 0.0045F) % 256;
+        float scrollY = (now * 0.0021F) % 256;
+        for (int gx = 0; gx <= 1; gx++) {
+            for (int gy = 0; gy <= 1; gy++) {
+                float px = gx * 256 - scrollX;
+                float py = gy * 256 - scrollY;
+                stars.blitAdditive(canvas, w, h, px + 128, py + 128, 256, 1.0F, 0.0F, 0x90FFFFFF);
+            }
+        }
+        nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x80FFFFFF);
         halo.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
         disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0xF0FFFFFF);
         core.blitAlpha(canvas, w, h, cx, cy, d, 1.0F, 0.0F, 0xF0000000);

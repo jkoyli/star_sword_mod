@@ -29,6 +29,7 @@ public final class FxTextures {
             "blackhole_ring",
             "blackhole_core",
             "blackhole_streak",
+            "blackhole_stars",
     };
 
     private FxTextures() {

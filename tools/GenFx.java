@@ -241,8 +241,129 @@ public final class GenFx {
         writePng(guiDir.resolve("blackhole_ring.png"), ring());
         writePng(guiDir.resolve("blackhole_core.png"), core());
         writePng(guiDir.resolve("blackhole_streak.png"), streak());
+        writePng(guiDir.resolve("blackhole_stars.png"), starfield());
 
         System.out.println("done");
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 星空"照片"                                                          */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 256×256、**四边可无缝平铺**的星空底图。
+     *
+     * <p>做法：把画布切成 {@code CELLS×CELLS} 个格子，每个格子用哈希决定有没有星、
+     * 星的位置（格内抖动）、亮度（幂律，暗星多亮星少）、色温（蓝白到暖黄）。
+     * 星点用高斯核绘制，坐标取模，所以左右上下边缘天然接得上，
+     * 平铺时不会出现接缝或重复的网格感。
+     *
+     * <p>密度场用整数频率的正弦叠出来——整数频率意味着它在 {@code CELLS} 处正好回到原点，
+     * 于是"星团-空洞"的疏密分布也可以平铺。
+     */
+    static BufferedImage starfield() {
+        final int s = 256;
+        final int cells = 128;
+        final double cell = (double) s / cells;
+
+        double[] r = new double[s * s];
+        double[] g = new double[s * s];
+        double[] b = new double[s * s];
+        double[] haze = new double[cells * cells];
+
+        for (int j = 0; j < cells; j++) {
+            for (int i = 0; i < cells; i++) {
+                // 可平铺的疏密场：频率都是整数圈
+                double n = 0.5
+                        + 0.26 * Math.sin(2 * Math.PI * (3.0 * i / cells + 1.0 * j / cells) + 0.7)
+                        + 0.20 * Math.sin(2 * Math.PI * (7.0 * i / cells - 2.0 * j / cells) + 2.1)
+                        + 0.14 * Math.sin(2 * Math.PI * (11.0 * i / cells + 5.0 * j / cells) + 4.3);
+                double density = clamp01(n * 0.75);
+                haze[j * cells + i] = density;
+
+                if (rnd(i, j, 1) > density * 0.035) {
+                    continue;
+                }
+
+                double sx = (i + rnd(i, j, 2)) * cell;
+                double sy = (j + rnd(i, j, 3)) * cell;
+                double bright = Math.pow(rnd(i, j, 4), 3.0) * 0.92 + 0.08;
+                double radius = 0.42 + 1.45 * bright;
+                double temp = rnd(i, j, 5);
+
+                // 色温：temp=0 偏蓝白，temp=1 偏暖黄
+                double cr = 0.74 + 0.26 * temp;
+                double cg = 0.80 + 0.20 * (1.0 - Math.abs(temp - 0.5) * 2.0);
+                double cb = 1.08 - 0.34 * temp;
+
+                int rad = (int) Math.ceil(radius * 2.6) + 1;
+                for (int dy = -rad; dy <= rad; dy++) {
+                    for (int dx = -rad; dx <= rad; dx++) {
+                        double d2 = dx * dx + dy * dy;
+                        double w = Math.exp(-d2 / (2.0 * radius * radius)) * bright;
+                        if (w < 0.002) continue;
+                        int px = Math.floorMod((int) sx + dx, s);
+                        int py = Math.floorMod((int) sy + dy, s);
+                        int idx = py * s + px;
+                        r[idx] += w * cr;
+                        g[idx] += w * cg;
+                        b[idx] += w * cb;
+                    }
+                }
+
+                // 最亮的那批给一点十字星芒，这是"照片感"的关键
+                if (bright > 0.86) {
+                    double len = 2.0 + bright * 5.0;
+                    for (int d = 1; d <= (int) len; d++) {
+                        double w = bright * (1.0 - d / len) * 0.35;
+                        for (int sign = -1; sign <= 1; sign += 2) {
+                            int px = Math.floorMod((int) sx + sign * d, s);
+                            int py = Math.floorMod((int) sy, s);
+                            int idx = py * s + px;
+                            r[idx] += w * cr;
+                            g[idx] += w * cg;
+                            b[idx] += w * cb;
+                            px = Math.floorMod((int) sx, s);
+                            py = Math.floorMod((int) sy + sign * d, s);
+                            idx = py * s + px;
+                            r[idx] += w * cr;
+                            g[idx] += w * cg;
+                            b[idx] += w * cb;
+                        }
+                    }
+                }
+            }
+        }
+
+        BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < s; y++) {
+            for (int x = 0; x < s; x++) {
+                int idx = y * s + x;
+                double rr = r[idx];
+                double gg = g[idx];
+                double bb = b[idx];
+                double lum = 0.2126 * rr + 0.7152 * gg + 0.0722 * bb;
+
+                // 极淡的银河底噪，避免纯黑
+                double hv = haze[(y * cells / s) * cells + (x * cells / s)];
+                double hazeA = hv * 0.10;
+                rr += hazeA * 0.35;
+                gg += hazeA * 0.55;
+                bb += hazeA * 0.85;
+
+                double a = clamp01(1.0 - Math.exp(-(lum * 2.2 + hazeA * 0.8)));
+                if (a <= 0.004) {
+                    img.setRGB(x, y, 0);
+                    continue;
+                }
+                double inv = lum > 1e-6 ? 1.0 / Math.max(lum, 1e-6) : 0.0;
+                int cr = (int) Math.round(clamp01(rr * inv) * 255);
+                int cg = (int) Math.round(clamp01(gg * inv) * 255);
+                int cb = (int) Math.round(clamp01(bb * inv) * 255);
+                img.setRGB(x, y, argb(a, (cr << 16) | (cg << 8) | cb));
+            }
+        }
+        return img;
     }
 
     /**

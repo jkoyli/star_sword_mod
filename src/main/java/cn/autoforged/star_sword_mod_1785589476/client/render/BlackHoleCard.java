@@ -39,6 +39,9 @@ public final class BlackHoleCard {
     private static final ResourceLocation TEX_RING = tex("blackhole_ring");
     private static final ResourceLocation TEX_CORE = tex("blackhole_core");
     private static final ResourceLocation TEX_STREAK = tex("blackhole_streak");
+    private static final ResourceLocation TEX_STARS = tex("blackhole_stars");
+    /** 星空照片的平铺边长，必须等于贴图尺寸。 */
+    private static final int STAR_TILE = 256;
 
     /** 卡片内边距。 */
     private static final int PAD = 7;
@@ -141,35 +144,51 @@ public final class BlackHoleCard {
         float d = diameter * breathe;
 
         FxDraw.additive();
-        // 星云与辉光都比卡片大，必须裁到卡片内，否则会糊到界面其它地方。
+        // 星云 / 星空 / 辉光都比卡片大，必须裁到卡片内，否则会糊到界面其它地方。
         graphics.enableScissor(cardX, cardY, cardX + cardW, cardY + cardH);
-        // 0) 会流动的星云：每 80ms 在 CPU 上重算一次，差速旋转把气团剪成螺旋。
+
+        // 0) 星空照片：256×256 无缝平铺，沿对角线缓慢漂移，"照片在流动"而不是星云在转。
+        float scrollX = (now * 0.0045F) % STAR_TILE;
+        float scrollY = (now * 0.0021F) % STAR_TILE;
+        for (int gx = 0; gx <= 1; gx++) {
+            for (int gy = 0; gy <= 1; gy++) {
+                float px = cardX + gx * STAR_TILE - scrollX;
+                float py = cardY + gy * STAR_TILE - scrollY;
+                if (px > cardX + cardW || py > cardY + cardH) {
+                    continue;
+                }
+                FxDraw.texQuad(graphics, TEX_STARS, px, py,
+                        px + STAR_TILE, py + STAR_TILE, 0xB4FFFFFF);
+            }
+        }
+
+        // 1) 会流动的星云：每 80ms 在 CPU 上重算一次，差速旋转把气团剪成螺旋。
         //    这一层是"流动感"的主要来源——静态贴图再怎么转都只是整块在转。
         ResourceLocation nebula = NebulaField.texture();
         if (nebula != null) {
             layer(graphics, nebula, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x80FFFFFF);
         }
-        // 1) 辉光
+        // 2) 辉光
         layer(graphics, TEX_HALO, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
         graphics.disableScissor();
-        // 2) 盘的后半（压扁成椭圆，模拟倾角；视界仍然是正圆，只有盘被压扁）
+        // 3) 盘的后半（压扁成椭圆，模拟倾角；视界仍然是正圆，只有盘被压扁）
         layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0xF0FFFFFF);
 
-        // 3) 事件视界：球体投影永远是正圆，压扁就露馅了
+        // 4) 事件视界：球体投影永远是正圆，压扁就露馅了
         FxDraw.alpha();
         layer(graphics, TEX_CORE, cx, cy, d, 1.0F, 0.0F, 0xF0000000);
 
         FxDraw.additive();
-        // 4) 光子环
+        // 5) 光子环
         layer(graphics, TEX_RING, cx, cy, d, 1.0F, 0.0F, 0xFFE8FFFF);
-        // 5) 盘的前半：只保留中心线以下的区域，形成"近侧从前面压过去"的前后关系
+        // 6) 盘的前半：只保留中心线以下的区域，形成"近侧从前面压过去"的前后关系
         int scissorTop = (int) (cy - d * 0.02F);
         int scissorBottom = (int) (cy + d * 0.50F);
         graphics.enableScissor((int) (cx - d * 0.55F), scissorTop,
                 (int) (cx + d * 0.55F), scissorBottom);
         layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0x9AFFFFFF);
         graphics.disableScissor();
-        // 6) 被拉成弧的星光
+        // 7) 被拉成弧的星光
         layer(graphics, TEX_STREAK, cx, cy, d * 1.35F, DISK_SQUASH, -angle * 0.55F, 0x40BFEFFF);
 
         FxDraw.reset();
