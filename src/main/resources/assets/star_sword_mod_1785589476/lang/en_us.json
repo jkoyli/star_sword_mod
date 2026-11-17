@@ -147,5 +147,11 @@
   "gui.star_sword_mod_1785589476.mech.startup_subtitle": "Adjust, then click Start Game",
   "gui.star_sword_mod_1785589476.mech.startup_hint": "Presets apply when you join (sword + permission required)",
   "gui.star_sword_mod_1785589476.mech.start": "Start Game",
-  "gui.star_sword_mod_1785589476.mech.presets_applied": "Mechanic presets applied"
+  "gui.star_sword_mod_1785589476.mech.presets_applied": "Mechanic presets applied",
+  "gui.star_sword_mod_1785589476.mech.attack_all_damage_types": "All damage types",
+  "gui.star_sword_mod_1785589476.mech.attack_all_damage_types.desc": "Applies 30 damage types per swing to punch through immunities (off by default)",
+  "gui.star_sword_mod_1785589476.mech.attack_death_lock": "Death lock",
+  "gui.star_sword_mod_1785589476.mech.attack_death_lock.desc": "Keeps suppressing health-capped or revived targets until truly dead (on by default)",
+  "gui.star_sword_mod_1785589476.mech.attack_item_attraction": "Item attraction",
+  "gui.star_sword_mod_1785589476.mech.attack_item_attraction.desc": "Right click pulls drops within 128 blocks into your inventory (on by default)"
 }

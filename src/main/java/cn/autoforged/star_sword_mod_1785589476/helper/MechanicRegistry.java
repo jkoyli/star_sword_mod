@@ -86,6 +86,19 @@ public final class MechanicRegistry {
         global("health_lock_strict", HealthWritePolicy.isStrict(),
                 HealthWritePolicy::isStrict,
                 HealthWritePolicy::setStrict);
+
+        // 攻击侧三项（{@link AttackOptions} 的闸门）。它们影响的是「星辉剑打出去的那一下」，
+        // 服务端全局生效（攻击判定在服务端跑），所以同样是全服项、需要 op2。
+        // 默认值取 AttackOptions 的启动口径（deathLock / itemAttraction 默认开）。
+        global("attack_all_damage_types", AttackOptions.allDamageTypes(),
+                AttackOptions::allDamageTypes,
+                AttackOptions::setAllDamageTypes);
+        global("attack_death_lock", AttackOptions.deathLock(),
+                AttackOptions::deathLock,
+                AttackOptions::setDeathLock);
+        global("attack_item_attraction", AttackOptions.itemAttraction(),
+                AttackOptions::itemAttraction,
+                AttackOptions::setItemAttraction);
     }
 
     private MechanicRegistry() {

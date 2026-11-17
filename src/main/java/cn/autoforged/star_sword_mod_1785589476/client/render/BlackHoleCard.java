@@ -42,8 +42,12 @@ public final class BlackHoleCard {
     private static final ResourceLocation TEX_STARS = tex("blackhole_stars");
     /** 深空照片原图，仅作透镜层失败时的兜底。 */
     private static final ResourceLocation TEX_DEEPSPACE = tex("blackhole_deepspace");
+    /** 用史瓦西渲染器烘出来的真实透镜成像（盘 + 阴影 + 光子环），alpha 之外全是透明。 */
+    private static final ResourceLocation TEX_RENDER = tex("blackhole_render");
     private static final int DEEPSPACE_W = 512;
     private static final int DEEPSPACE_H = 288;
+    /** 烘出来的黑洞图裁切后的宽高比（92×60）。 */
+    private static final float RENDER_ASPECT = 60.0F / 92.0F;
     /** 只打一次的版本标记：日志里能看出跑的是哪一版特效。 */
     private static boolean loggedOnce;
     /** 事件视界半径占黑洞直径的比例（core 贴图内半径 70/128 的一半取整）。 */
@@ -149,7 +153,7 @@ public final class BlackHoleCard {
     private static void drawBlackHole(GuiGraphics graphics, int cx, int cy, float diameter, long now,
                                       int cardX, int cardY, int cardW, int cardH) {
         // 旋转速度：盘 3.4°/s 左右，慢到能看清，快到不像静止图。
-        float angle = now * 0.00060F;
+        float angle = now * 0.00022F;   // 盘约 1.3°/s：能看出在转，但不至于"呼啦圈"
         // 呼吸：整体尺寸 ±2%，让画面"活着"但不晃。
         float breathe = 1.0F + 0.02F * Mth.sin(now * 0.0016F);
         float d = diameter * breathe;
@@ -178,27 +182,27 @@ public final class BlackHoleCard {
             layer(graphics, nebula, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x30FFFFFF);
         }
         // 2) 辉光
-        layer(graphics, TEX_HALO, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
+        layer(graphics, TEX_HALO, cx, cy, d * 2.60F, 1.0F, 0.0F, 0x55BFEFFF);
         graphics.disableScissor();
-        // 3) 盘的后半（压扁成椭圆，模拟倾角；视界仍然是正圆，只有盘被压扁）
+
+        // 3) 吸积盘：压扁成椭圆模拟倾角；只有盘在转，视界和光子环是旋转对称的，不转
         layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0xF0FFFFFF);
 
-        // 4) 事件视界：球体投影永远是正圆，压扁就露馅了
+        // 4) 事件视界
         FxDraw.alpha();
         layer(graphics, TEX_CORE, cx, cy, d, 1.0F, 0.0F, 0xF0000000);
 
         FxDraw.additive();
         // 5) 光子环
         layer(graphics, TEX_RING, cx, cy, d, 1.0F, 0.0F, 0xFFE8FFFF);
-        // 6) 盘的前半：只保留中心线以下的区域，形成"近侧从前面压过去"的前后关系
+        // 6) 盘的近侧：只保留中心线以下，让近侧从视界前面压过去。
+        //    透明度压到 0x50——之前 0x9A 时这一层和主盘能看出明显的"两张贴片"
         int scissorTop = (int) (cy - d * 0.02F);
         int scissorBottom = (int) (cy + d * 0.50F);
         graphics.enableScissor((int) (cx - d * 0.55F), scissorTop,
                 (int) (cx + d * 0.55F), scissorBottom);
-        layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0x9AFFFFFF);
+        layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0x50FFFFFF);
         graphics.disableScissor();
-        // 7) 被拉成弧的星光
-        layer(graphics, TEX_STREAK, cx, cy, d * 1.35F, DISK_SQUASH, -angle * 0.55F, 0x40BFEFFF);
 
         FxDraw.reset();
     }

@@ -147,5 +147,11 @@
   "gui.star_sword_mod_1785589476.mech.startup_subtitle": "调整好后点击「启动游戏」",
   "gui.star_sword_mod_1785589476.mech.startup_hint": "预设会在进入世界时自动应用（需持剑与权限）",
   "gui.star_sword_mod_1785589476.mech.start": "启动游戏",
-  "gui.star_sword_mod_1785589476.mech.presets_applied": "机制预设已下发"
+  "gui.star_sword_mod_1785589476.mech.presets_applied": "机制预设已下发",
+  "gui.star_sword_mod_1785589476.mech.attack_all_damage_types": "全部伤害类型轮打",
+  "gui.star_sword_mod_1785589476.mech.attack_all_damage_types.desc": "每次挥砍依次施加 30 种伤害，能硬穿免疫（默认关）",
+  "gui.star_sword_mod_1785589476.mech.attack_death_lock": "死亡锁",
+  "gui.star_sword_mod_1785589476.mech.attack_death_lock.desc": "被限伤/被复活的目持续压制到真正死亡（默认开）",
+  "gui.star_sword_mod_1785589476.mech.attack_item_attraction": "远距离拾取",
+  "gui.star_sword_mod_1785589476.mech.attack_item_attraction.desc": "右键时把 128 格内掉落物吸进背包（默认开）"
 }

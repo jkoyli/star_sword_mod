@@ -31,6 +31,7 @@ public final class FxTextures {
             "blackhole_streak",
             "blackhole_stars",
             "blackhole_deepspace",
+            "blackhole_render",
     };
 
     private FxTextures() {

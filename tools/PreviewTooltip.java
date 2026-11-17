@@ -34,6 +34,7 @@ public final class PreviewTooltip {
         // 星云是运行时算出来的，这里复刻一份固定时刻的帧
         Layer nebula = new Layer(nebulaPixels(1.7), NEB_SIZE, NEB_SIZE);
         Layer stars = new Layer("blackhole_stars.png");
+        Layer sprite = new Layer("blackhole_render.png");
 
         int cardW = 240;
         int cardH = 84;
@@ -61,7 +62,7 @@ public final class PreviewTooltip {
         int[] lensPx = lensPixels(cardW, cardH, (cardW - PAD - GUTTER / 2.0F), cardH / 2.0F,
                 shadowR, now / 1000.0);
         blitCover(canvas, w, h, lensPx, 160, 80, 0xECFFFFFF);
-        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula, stars);
+        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula, stars, sprite);
 
         // 文字区的横向渐隐底（与 BlackHoleCard 的 32 条竖带一致）
         int scrimRight = (cardW - PAD - GUTTER) * PX;
@@ -79,22 +80,20 @@ public final class PreviewTooltip {
     }
 
     private static void drawBlackHole(int[] canvas, int w, int h, float cx, float cy, float diameter, long now,
-                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak, Layer nebula, Layer stars) {
-        float angle = now * 0.00060F;
+                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak, Layer nebula, Layer stars, Layer sprite) {
+        float angle = now * 0.00022F;
         float breathe = 1.0F + 0.02F * (float) Math.sin(now * 0.0016F);
         float d = diameter * breathe;
 
 
         nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x30FFFFFF);
-        halo.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
+        halo.blitAdditive(canvas, w, h, cx, cy, d * 2.60F, 1.0F, 0.0F, 0x55BFEFFF);
         disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0xF0FFFFFF);
         core.blitAlpha(canvas, w, h, cx, cy, d, 1.0F, 0.0F, 0xF0000000);
         ring.blitAdditive(canvas, w, h, cx, cy, d, 1.0F, 0.0F, 0xFFE8FFFF);
-
-        int scissorTop = (int) (cy - d * 0.02F);
-        int scissorBottom = (int) (cy + d * 0.50F);
-        disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0x9AFFFFFF, scissorTop, scissorBottom);
-        streak.blitAdditive(canvas, w, h, cx, cy, d * 1.35F, SQUASH, -angle * 0.55F, 0x40BFEFFF);
+        int scTop = (int) (cy - d * 0.02F);
+        int scBot = (int) (cy + d * 0.50F);
+        disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0x50FFFFFF, scTop, scBot);
     }
 
     static final int NEB_SIZE = 160;

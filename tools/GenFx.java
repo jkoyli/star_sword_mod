@@ -98,21 +98,22 @@ public final class GenFx {
         Files.createDirectories(backupDir);
         Files.createDirectories(guiDir);
 
-        /* ---- 1. read source (self-healing if the file is already a strip) ---- */
-        BufferedImage src;
-        if (Files.exists(swordPng) && ImageIO.read(swordPng.toFile()).getHeight() == SRC) {
-            src = ImageIO.read(swordPng.toFile());
-            if (!Files.exists(backupPng)) {
-                Files.copy(swordPng, backupPng, StandardCopyOption.COPY_ATTRIBUTES);
+        /* ---- 1. 程序化生成"中空"剑形 ----
+           原素材是一把画得很满的剑，每个像素都离透明区很近，硬掏空只会变成"漏勺"。
+           所以这里重新画一把：**1 像素描边 + 2-3 像素中空**，
+           中空那块留给星空（spacePixel），这才是无尽贪婪那种做法。 */
+        if (!Files.exists(backupPng) && Files.exists(swordPng)) {
+            try {
+                if (ImageIO.read(swordPng.toFile()).getHeight() == SRC) {
+                    Files.copy(swordPng, backupPng, StandardCopyOption.COPY_ATTRIBUTES);
+                }
+            } catch (Exception ignored) {
+                // 备份失败不影响生成
             }
-        } else if (Files.exists(backupPng)) {
-            src = ImageIO.read(backupPng.toFile());
-            System.out.println("source already animated; using backup " + backupPng);
-        } else {
-            throw new IllegalStateException("no usable source sword texture found at " + swordPng);
         }
+        BufferedImage src = swordSprite();
         if (src.getWidth() != SRC || src.getHeight() != SRC) {
-            throw new IllegalStateException("source must be 16x16, got " + src.getWidth() + "x" + src.getHeight());
+            throw new IllegalStateException("sprite must be 16x16, got " + src.getWidth() + "x" + src.getHeight());
         }
 
         /* ---- 2. art 4x upscale, centred inside a wider canvas ---- */
@@ -127,22 +128,45 @@ public final class GenFx {
         }
 
         boolean[][] opaque = new boolean[FRAME][FRAME];
-        boolean[][] locked = new boolean[FRAME][FRAME];
         for (int y = 0; y < FRAME; y++) {
             for (int x = 0; x < FRAME; x++) {
                 opaque[y][x] = ((base[y][x] >>> 24) & 255) != 0;
-                // 原图最外一圈（放大后 4 texel）逐字节锁死，泛光只能画在它外面
-                int ax = x - MARGIN;
-                int ay = y - MARGIN;
-                locked[y][x] = opaque[y][x] && (ax < BORDER || ay < BORDER
-                        || ax >= ART - BORDER || ay >= ART - BORDER);
             }
         }
 
-        /* ---- 3. two fields used by every frame ----
-           bloom：剑身内部靠近轮廓的几像素，做"边缘自己也在发亮"；
-           glow ：轮廓外的软光晕（画在留白里，最远 MARGIN 像素）。 */
-        double[][] bloom = new double[FRAME][FRAME];
+        /* 轮廓 = 原图里"离透明像素恰好 1 像素"的那一圈。
+           这一圈逐字节保留，里面**全部掏空**换成一整块星空（不是叠加在原图上）。 */
+        int[][] edgePx = new int[FRAME][FRAME];
+        boolean[][] locked = new boolean[FRAME][FRAME];
+        for (int v = 0; v < SRC; v++) {
+            for (int u = 0; u < SRC; u++) {
+                if (((src.getRGB(u, v) >>> 24) & 255) == 0) {
+                    continue;
+                }
+                int d = 3;
+                for (int dy = -2; dy <= 2; dy++) {
+                    for (int dx = -2; dx <= 2; dx++) {
+                        int nu = u + dx;
+                        int nv = v + dy;
+                        boolean solid = nu >= 0 && nv >= 0 && nu < SRC && nv < SRC
+                                && ((src.getRGB(nu, nv) >>> 24) & 255) != 0;
+                        if (!solid) {
+                            d = Math.min(d, Math.max(Math.abs(dx), Math.abs(dy)));
+                        }
+                    }
+                }
+                for (int ty = 0; ty < SCALE; ty++) {
+                    for (int tx = 0; tx < SCALE; tx++) {
+                        int x = MARGIN + u * SCALE + tx;
+                        int y = MARGIN + v * SCALE + ty;
+                        edgePx[y][x] = d;
+                        locked[y][x] = d == 1;
+                    }
+                }
+            }
+        }
+
+        /* ---- 3. 轮廓外的软光晕（画在留白里，最远 MARGIN 像素）---- */
         double[][] glow = new double[FRAME][FRAME];
         for (int y = 0; y < FRAME; y++) {
             for (int x = 0; x < FRAME; x++) {
@@ -163,10 +187,7 @@ public final class GenFx {
                     double k = Math.pow(1 - best / MARGIN, 1.35);
                     glow[y][x] = k * k;
                 }
-                if (opaque[y][x]) {
-                    // 内部：只有真正贴着轮廓的 1-2 px 才提亮，否则整把剑会糊成一片白
-                    bloom[y][x] = Math.max(0, 1.0 - best / 2.6);
-                }
+
             }
         }
 
@@ -183,7 +204,7 @@ public final class GenFx {
                     if (locked[y][x]) {
                         out = px; // 原图最外圈：一个字节都不改
                     } else if (opaque[y][x]) {
-                        out = 0xFF000000 | framePixel(x, y, phase, px, bloom[y][x]);
+                        out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
                     } else if (glow[y][x] > 0.002) {
                         out = glowPixel(x, y, phase, px, glow[y][x]);
                     } else {
@@ -222,7 +243,7 @@ public final class GenFx {
                 if (locked[y][x]) {
                     rerender = px;
                 } else if (opaque[y][x]) {
-                    rerender = 0xFF000000 | framePixel(x, y, 2 * Math.PI, px, bloom[y][x]);
+                    rerender = 0xFF000000 | spacePixel(x, y, 2 * Math.PI, edgePx[y][x]);
                 } else if (glow[y][x] > 0.002) {
                     rerender = glowPixel(x, y, 2 * Math.PI, px, glow[y][x]);
                 } else {
@@ -246,6 +267,88 @@ public final class GenFx {
         System.out.println("done");
     }
 
+    /* ------------------------------------------------------------------ */
+    /* 剑形：1 像素描边 + 中空                                                 */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * 画一把 16×16 的"中空"剑：只有描边是实心的，剑身内部留空给星空。
+     *
+     * <p>几何：剑身是一条从剑尖 (13.2,2.2) 到护手 (4.6,10.8) 的粗线（带收尖），
+     * 护手是垂直的一小段，剑柄再往下，末端一个圆头。先把形状栅格化，
+     * 再把"贴着形状边界的那一圈"判定为描边，其余内部像素就是中空区。
+     */
+    static BufferedImage swordSprite() {
+        int s = SRC;
+        boolean[][] shape = new boolean[s][s];
+        double[][] bladeT = new double[s][s];
+
+        for (int y = 0; y < s; y++) {
+            for (int x = 0; x < s; x++) {
+                double px = x + 0.5;
+                double py = y + 0.5;
+
+                // 剑身：起点是剑尖，终点是护手
+                double[] seg = distSeg(px, py, 13.2, 2.2, 4.6, 10.8);
+                double d = seg[0];
+                double t = seg[1];                      // 0 = 剑尖，1 = 护手
+                bladeT[y][x] = t;
+                // 收尖：靠近剑尖的 18% 变细
+                double halfW = 2.35 * (0.30 + 0.70 * smooth(0.0, 0.18, t));
+
+                boolean blade = d <= halfW;
+                boolean guard = distSeg(px, py, 6.5, 12.7, 2.7, 8.9)[0] <= 1.05;
+                boolean grip = distSeg(px, py, 4.3, 11.7, 2.5, 13.7)[0] <= 0.90;
+                boolean pommel = Math.hypot(px - 1.8, py - 14.3) <= 1.15;
+
+                shape[y][x] = blade || guard || grip || pommel;
+            }
+        }
+
+        BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < s; y++) {
+            for (int x = 0; x < s; x++) {
+                if (!shape[y][x]) {
+                    img.setRGB(x, y, 0);
+                    continue;
+                }
+                boolean border = false;
+                for (int dy = -1; dy <= 1 && !border; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= s || ny >= s || !shape[ny][nx]) {
+                            border = true;
+                            break;
+                        }
+                    }
+                }
+                if (!border) {
+                    // 内部必须是**不透明**的占位色：不透明才会被判成"剑身内部"，
+                    // 由 spacePixel 换成星空；写成透明就会被当成剑身之外，星空根本没机会画上去。
+                    img.setRGB(x, y, 0xFF101820);
+                    continue;
+                }
+                // 描边用沿剑身的渐变：剑尖冷白，靠近护手转青
+                int color = lerp(0xe8feff, 0x2fa9cc, smooth(0.0, 1.0, bladeT[y][x]));
+                img.setRGB(x, y, 0xFF000000 | color);
+            }
+        }
+        return img;
+    }
+
+    /** 点到线段的 (距离, 归一化投影位置)。 */
+    static double[] distSeg(double px, double py, double x1, double y1, double x2, double y2) {
+        double vx = x2 - x1;
+        double vy = y2 - y1;
+        double wx = px - x1;
+        double wy = py - y1;
+        double len2 = vx * vx + vy * vy;
+        double t = len2 <= 1e-9 ? 0.0 : clamp01((wx * vx + wy * vy) / len2);
+        double cx = x1 + vx * t;
+        double cy = y1 + vy * t;
+        return new double[] {Math.hypot(px - cx, py - cy), t};
+    }
     /* ------------------------------------------------------------------ */
     /* 星空"照片"                                                          */
     /* ------------------------------------------------------------------ */
@@ -366,6 +469,52 @@ public final class GenFx {
         return img;
     }
 
+    /**
+     * 剑身内部的一个像素：这里**不混原图颜色**，整块换成"空间"——
+     * 深空底色 + 沿剑身流动的星云 + 稀疏星点，再用刃口内缘的一圈冷光做出厚度。
+     *
+     * <p>这是无尽贪婪那种做法：剑只是个框，中间是透出来的星空；
+     * 一旦把原图颜色混进去（也就是"叠加"），整把剑就会糊成一片，且失去体积感。
+     */
+    static int spacePixel(int x, int y, double phase, int edgePx) {
+        double u = (x - MARGIN + 0.5) / SCALE;
+        double v = (y - MARGIN + 0.5) / SCALE;
+        double s = (u - v) * 0.70710678;
+        double t = (u + v) * 0.70710678;
+
+        // 沿剑身滚动：一个循环正好走完 22 个原生像素，相位首尾对齐
+        double s01 = clamp01((s + 11.0) / 22.0);
+        double flow = s01 * 3.0 - phase / (2 * Math.PI);
+        flow = flow - Math.floor(flow);
+
+        // 星云：低频、沿剑身缓慢漂，色相压在青蓝，别抢刃口的白
+        double neb = 0.5
+                + 0.30 * Math.sin(2 * Math.PI * (flow * 3.0) + t * 0.9)
+                + 0.20 * Math.sin(2 * Math.PI * (flow * 4.0 - 0.3) - 1.7 + t * 0.4);
+        neb = clamp01(neb);
+        neb = neb * neb;
+
+        // 底色近黑，星云只在亮处透出来 —— 这样"星空"才深得下去
+        int color = lerp(0x04070e, 0x1b6f8c, neb * 0.85);
+
+        // 贴着轮廓的那一圈（edgePx==2）只做一点点内发光：
+        // 16×16 的剑身本来就只有 2-3 像素宽，这里一旦提亮过头，整把剑又会糊回一片白。
+        if (edgePx == 2) {
+            color = lerp(color, 0x4fb8d8, 0.16);
+        }
+
+        // 星点：稀疏，整数频率闪烁，保证 96 帧循环无缝
+        int cu = (int) Math.floor(u);
+        int cv = (int) Math.floor(v);
+        if (rnd(cu, cv, 7) > 0.55) {
+            int freq = 1 + (int) (rnd(cu, cv, 13) * 3);
+            double tw = Math.sin(freq * phase + rnd(cu, cv, 19) * 2 * Math.PI);
+            if (tw > 0.30) {
+                color = lerp(color, 0xffffff, Math.pow(tw, 2.2) * 1.0);
+            }
+        }
+        return color;
+    }
     /**
      * One editable pixel of the sword for a given animation phase.
      * All time-dependent terms are 2*pi-periodic in phase, so frame 96 == frame 0.

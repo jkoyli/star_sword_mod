@@ -44,6 +44,7 @@ final class SettingsCatalog {
     }
 
     static final String GROUP_PLAYER = "玩家开关";
+    static final String GROUP_ATTACK = "攻击开关";
     static final String GROUP_GLOBAL = "全服开关";
 
     private static final List<Def> DEFS = new ArrayList<>();
@@ -64,6 +65,23 @@ final class SettingsCatalog {
         DEFS.add(new Def("reflection", "反射之符", "对视线内目标强制清血",
                 "开启后：右键反射之符时，对 64 格内准星目标执行反射击杀（绕过 setHealth 下限）。",
                 GROUP_PLAYER, false, false));
+
+        // 攻击侧（影响「星辉剑打出去的那一下」，服务端全局生效，需要 op2）
+        DEFS.add(new Def("attack_all_damage_types", "全部伤害类型轮打",
+                "每次挥砍依次施加 30 种伤害类型（默认关）",
+                "开启后：能硬穿「对某类伤害免疫」的模组生物，代价是每次挥砍最多 30 次 hurt()"
+                        + "与约 30 行日志，并会触发对方所有受击生成逻辑。默认关闭。",
+                GROUP_ATTACK, false, true));
+        DEFS.add(new Def("attack_death_lock", "死亡锁",
+                "被限伤/被复活的目标每 tick 继续压制（默认开）",
+                "开启后：命中目标会被写进死亡锁，每 tick 继续强制击杀，直到真正死亡。"
+                        + "关闭后只有挥砍那一下生效，目标被限伤或复活就杀不掉。",
+                GROUP_ATTACK, true, true));
+        DEFS.add(new Def("attack_item_attraction", "远距离拾取",
+                "右键时把 128 格内掉落物吸进背包（默认开）",
+                "开启后：右键除了 AoE 攻击，还会把 128 格内掉落物吸过来。"
+                        + "关闭后右键只打怪，不拾取。",
+                GROUP_ATTACK, true, true));
 
         DEFS.add(new Def("spawn_prevention", "禁止生成", "全服阻止新实体生成（需 op2）",
                 "开启后：新实体生成被拦下，并记录被禁的实体类型。它是全服静态开关，"

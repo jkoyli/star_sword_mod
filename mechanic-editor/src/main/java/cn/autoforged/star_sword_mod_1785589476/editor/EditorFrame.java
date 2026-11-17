@@ -147,14 +147,32 @@ final class EditorFrame extends JFrame {
         if (instance != null) {
             // 关键：写进实例自己的 config/，mod 默认就在那儿找。
             this.settingsFile = SettingsFile.forGameDir(instance.dir);
-            this.instanceInfo.setText("配置：" + this.settingsFile);
+            this.instanceInfo.setText("配置：" + instance.name + " \\ config\\" + SettingsFile.FILE_NAME);
+            this.instanceInfo.setToolTipText(this.settingsFile.toString());
         } else {
             this.settingsFile = SettingsFile.resolve(this.root);
-            this.instanceInfo.setText("未选实例；配置将写到工程根：" + this.settingsFile);
+            this.instanceInfo.setText("未选实例；配置将写到工程根：" + shorten(this.settingsFile.toString()));
+            this.instanceInfo.setToolTipText(this.settingsFile.toString());
         }
         this.instanceInfo.setForeground(instance != null ? MUTED : WARN);
         reloadValues();
         refreshGameState();
+    }
+
+    /** 太长的路径只显示尾部，完整路径放 tooltip（窗口宽度有限，硬截断很难看）。 */
+    private static String shorten(String path) {
+        if (path == null) {
+            return "";
+        }
+        if (path.length() <= 68) {
+            return path;
+        }
+        return "…" + path.substring(path.length() - 64);
+    }
+
+    /** 状态行前缀：带实例名，避免只看到一截路径不知道是哪个实例。 */
+    private String instanceLabel() {
+        return this.selectedInstance == null ? "" : this.selectedInstance.name + " · ";
     }
 
     private void reloadValues() {
@@ -162,7 +180,8 @@ final class EditorFrame extends JFrame {
         for (SettingRow row : this.rows) {
             row.setSelected(values.getOrDefault(row.def().id, row.def().defaultValue));
         }
-        this.status.setText("配置文件：" + this.settingsFile);
+        this.status.setText("配置文件：" + instanceLabel() + shorten(this.settingsFile.toString()));
+        this.status.setToolTipText(this.settingsFile.toString());
     }
 
     private Map<String, Boolean> valuesNow() {
@@ -202,6 +221,9 @@ final class EditorFrame extends JFrame {
         content.add(Box.createVerticalStrut(8));
         content.add(buildGroup(SettingsCatalog.GROUP_PLAYER,
                 "只影响自己；与符咒/面板是同一批开关", valuesNow()));
+        content.add(Box.createVerticalStrut(8));
+        content.add(buildGroup(SettingsCatalog.GROUP_ATTACK,
+                "影响剑打出去的那一下；服务端全局生效，需要 op2", valuesNow()));
         content.add(Box.createVerticalStrut(8));
         content.add(buildGroup(SettingsCatalog.GROUP_GLOBAL,
                 "全服共享，进服后需要 op2 才会被接受", valuesNow()));
@@ -479,21 +501,35 @@ final class EditorFrame extends JFrame {
         this.status.setText("正在启动…");
 
         Thread worker = new Thread(() -> {
-            String message;
+            String message = "正在启动…";
             Process process = null;
             try {
                 if (this.hmcl != null) {
-                    // 真实游戏：先把 mod 装进所选实例，再开 HMCL（不传参数）。
-                    if (this.selectedInstance != null && this.selectedInstance.installedStarSword == null) {
+                    // 真实游戏：先把 mod 装进所选实例（装没装、版本对不对都要管），再开 HMCL。
+                    // 只在「未装」时安装是不够的——实例里装着 2.3.4、这里构建出 2.3.5 时，
+                    // 不比对版本就会让玩家以为在测新版，其实跑的是旧的。
+                    Path source = ModInstaller.findSourceJar(this.root);
+                    String sourceName = source == null ? null : source.getFileName().toString();
+                    boolean needsInstall = this.selectedInstance != null && sourceName != null
+                            && !sourceName.equals(this.selectedInstance.installedStarSword);
+                    boolean installFailed = false;
+                    if (needsInstall) {
                         ModInstaller.Result installed =
-                                ModInstaller.install(this.root, this.selectedInstance, null);
+                                ModInstaller.install(this.root, this.selectedInstance, source);
                         if (!installed.ok()) {
                             message = installed.message();
+                            installFailed = true;
                         }
                     }
-                    GameLauncher.Result result = GameLauncher.launchHmcl(this.hmcl, this.selectedInstance);
-                    process = result.process();
-                    message = result.message();
+                    if (installFailed) {
+                        // 装不上就不要启动旧版，否则玩家以为在测新版。
+                        process = null;
+                    } else {
+                        GameLauncher.Result result = GameLauncher.launchHmcl(this.hmcl, this.selectedInstance);
+                        process = result.process();
+                        message = result.message()
+                                + (needsInstall ? "（已升级实例里的 mod 到 " + sourceName + "）" : "");
+                    }
                 } else {
                     GameLauncher.Result result = GameLauncher.launchDev(this.root, this.settingsFile);
                     process = result.process();
@@ -522,7 +558,7 @@ final class EditorFrame extends JFrame {
         }
         this.status.setText("正在启动开发环境…");
         Thread worker = new Thread(() -> {
-            String message;
+            String message = "正在启动…";
             Process process = null;
             try {
                 GameLauncher.Result result = GameLauncher.launchDev(this.root, this.settingsFile);
