@@ -3,6 +3,7 @@ package cn.autoforged.star_sword_mod_1785589476.client;
 import cn.autoforged.star_sword_mod_1785589476.StarSwordMod;
 import cn.autoforged.star_sword_mod_1785589476.client.gui.CommandPanelScreen;
 import cn.autoforged.star_sword_mod_1785589476.client.gui.MechanicPanelScreen;
+import cn.autoforged.star_sword_mod_1785589476.client.render.BlackHoleCard;
 import cn.autoforged.star_sword_mod_1785589476.client.ClientMechanicPresets;
 import cn.autoforged.star_sword_mod_1785589476.helper.EntityIntegrityProbe;
 import cn.autoforged.star_sword_mod_1785589476.helper.ModConstants;
@@ -157,6 +158,12 @@ public class ModClientForgeEvents {
         }
     }
 
+    /**
+     * 星辉剑的介绍框整体接管：右侧一颗实时黑洞，左侧是逐字彩色的名字与说明。
+     *
+     * <p>绘制细节全部收在 {@link BlackHoleCard} 里；这里只负责"是不是这把剑"和取消原版绘制。
+     * 用 {@code -Dstar_sword.fx.tooltip=false} 可以退回原来的纯色边框版本。
+     */
     @SubscribeEvent
     public static void onRenderTooltipPre(RenderTooltipEvent.Pre event) {
         ItemStack stack = event.getItemStack();
@@ -165,43 +172,9 @@ public class ModClientForgeEvents {
         event.setCanceled(true);
 
         var graphics = event.getGraphics();
-        var font = event.getFont();
-        var components = event.getComponents();
-        int origX = event.getX();
-        int origY = event.getY();
-
-        int maxWidth = 0;
-        int totalHeight = 0;
-        for (var comp : components) {
-            int w = comp.getWidth(font);
-            if (w > maxWidth) maxWidth = w;
-            totalHeight += comp.getHeight();
-        }
-
-        int tooltipX = origX;
-        int tooltipY = origY;
-
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 400);
-        int padding = 4;
-        int bgX1 = tooltipX - padding;
-        int bgX2 = tooltipX + maxWidth + padding;
-        int bgY1 = tooltipY - padding;
-        int bgY2 = tooltipY + totalHeight + padding;
-        graphics.fill(bgX1, bgY1, bgX2, bgY2, 0xF0100010);
-        graphics.fill(bgX1, bgY1, bgX2 - 1, bgY1 + 1, 0x505000FF);
-        graphics.fill(bgX1, bgY2 - 1, bgX2, bgY2, 0x505000FF);
-        graphics.fill(bgX1, bgY1, bgX1 + 1, bgY2, 0x505000FF);
-        graphics.fill(bgX2 - 1, bgY1, bgX2, bgY2, 0x505000FF);
-
-        int currentY = tooltipY;
-        for (var comp : components) {
-            int w = comp.getWidth(font);
-            int centeredX = tooltipX + (maxWidth - w) / 2;
-            comp.renderText(font, centeredX, currentY, graphics.pose().last().pose(), graphics.bufferSource());
-            currentY += comp.getHeight();
-        }
-
+        BlackHoleCard.render(graphics, event.getFont(), event.getComponents(), event.getX(), event.getY());
         graphics.pose().popPose();
     }
 
