@@ -234,7 +234,9 @@ public final class GenFx {
                     int out;
 
                     if (locked[y][x]) {
-                        out = 0xFF000000 | edgePixel(x, y, px);   // 描边重画（位置不变）
+                        // 轮廓像素也一起镂空放星空：无尽贪婪那种整块"窗口"，不留金属描边。
+                        // 只把贴边的那一圈调亮一点，保住剪影的可读性。
+                        out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
                     } else if (opaque[y][x]) {
                         out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
                     } else if (glow[y][x] > 0.002) {
@@ -264,7 +266,7 @@ public final class GenFx {
                     boolean gotOpaque = ((got >>> 24) & 255) != 0;
                     boolean wantOpaque = opaque[y][x] || (outside[y][x] && glow[y][x] > 0.002);
                     if (gotOpaque != wantOpaque) badBorder++;
-                    if (locked[y][x] && got != (0xFF000000 | edgePixel(x, y, base[y][x]))) badBorder++;
+                    if (locked[y][x] && got != (0xFF000000 | spacePixel(x, y, 2 * Math.PI * f / FRAMES, edgePx[y][x]))) badBorder++;
                 }
             }
         }
@@ -274,9 +276,9 @@ public final class GenFx {
                 int px = base[y][x];
                 int rerender;
                 if (locked[y][x]) {
-                    rerender = 0xFF000000 | edgePixel(x, y, px);
+                    rerender = 0xFF000000 | spacePixel(x, y, 0.0, edgePx[y][x]);
                 } else if (opaque[y][x]) {
-                    rerender = 0xFF000000 | spacePixel(x, y, 2 * Math.PI, edgePx[y][x]);
+                    rerender = 0xFF000000 | spacePixel(x, y, 0.0, edgePx[y][x]);
                 } else if (glow[y][x] > 0.002) {
                     rerender = glowPixel(x, y, 2 * Math.PI, px, glow[y][x]);
                 } else {
@@ -516,6 +518,20 @@ public final class GenFx {
         // 否则整把剑会变成一个平涂的剪影，没有厚度。
         double shade = 0.42 + 1.00 * lum(original);
         return scaleRgb(c, shade);
+    }
+    /**
+     * 轮廓像素的颜色：同样是星空，但整体提亮 + 沿剑身渐变，
+     * 让剪影在浅色背景上仍然读得出来（不新增像素，只是把这一圈画亮）。
+     */
+    static int rimPixel(int x, int y, int original) {
+        double u = (x - MARGIN + 0.5) / SCALE;
+        double v = (y - MARGIN + 0.5) / SCALE;
+        double s01 = clamp01((((u - v) * 0.70710678) + 11.0) / 22.0);
+
+        // 底色仍是深空，但明显偏亮，靠近剑尖更亮
+        int c = lerp(0x2a7f9c, 0x9fe8ff, 1.0 - smooth(0.0, 1.0, s01));
+        // 用原图亮度做明暗，保留体积
+        return scaleRgb(c, 0.45 + 0.85 * lum(original));
     }
     /**
      * 剑身内部的一个像素：这里**不混原图颜色**，整块换成"空间"——
