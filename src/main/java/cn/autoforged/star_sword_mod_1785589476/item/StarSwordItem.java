@@ -62,6 +62,25 @@ public class StarSwordItem extends SwordItem {
         return false;
     }
 
+    /**
+     * 附魔光晕（原版 glint）。
+     *
+     * <p>这是 1.20.1 里**唯一**能叠在物品图标上、且真的按加色混合绘制、逐帧滚动的层——
+     * 想让"剑的边缘有泛光"，靠贴图是做不到的（贴图只有 alpha 混合，压在深色背景上只是发灰），
+     * 原版这个 glint 才是真正意义上的"发光层"。剑的贴图里已经烘焙了边缘冷光，
+     * 两者叠起来才在浅色/深色背景下都读得出"这把剑在发光"。
+     *
+     * <p>副作用：外观上会和"附魔物品"一样带一层流光。不想要就
+     * {@code -Dstar_sword.fx.glint=false}，或者直接把这个方法改成返回 false。
+     */
+    private static final boolean GLINT =
+            !"false".equalsIgnoreCase(System.getProperty("star_sword.fx.glint", "true"));
+
+    @Override
+    public boolean isFoil(ItemStack stack) {
+        return GLINT;
+    }
+
     @Override
     public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
         super.inventoryTick(stack, level, entity, slot, selected);

@@ -104,7 +104,17 @@ public final class BlackHoleCard {
         int gutterCx = x + cardW - PAD - GUTTER / 2;
         int gutterCy = y + cardH / 2;
         float diameter = Math.min(GUTTER, cardH) * 0.94F;
-        drawBlackHole(graphics, gutterCx, gutterCy, diameter, now);
+        drawBlackHole(graphics, gutterCx, gutterCy, diameter, now, x, y, cardW, cardH);
+
+        // 文字区压一层从左到右渐隐的底色：星云会往左溢出，不压住的话文字对比度会被吃掉。
+        // 1.20.1 的 fillGradient 只有纵向两色版本，横向用 32 条竖带拼出来。
+        int scrimRight = x + cardW - PAD - GUTTER;
+        int scrimSteps = 32;
+        for (int i = 0; i < scrimSteps; i++) {
+            int sx0 = x + (scrimRight - x) * i / scrimSteps;
+            int sx1 = x + (scrimRight - x) * (i + 1) / scrimSteps;
+            graphics.fill(sx0, y, sx1, y + cardH, lerpColor(CARD_BG, 0x00080A10, i / (float) (scrimSteps - 1)));
+        }
 
         // 文字与黑洞之间的分隔线，避免文字压到发光的盘上。
         graphics.fill(x + cardW - PAD - GUTTER, y + PAD - 2,
@@ -122,7 +132,8 @@ public final class BlackHoleCard {
      * 画一颗黑洞。所有层共用同一个直径，因为几张贴图的内径是按同一个半径比例生成的
      * （视界 70/128、盘内缘 72/128、光子环 76/128），换直径时比例才不走样。
      */
-    private static void drawBlackHole(GuiGraphics graphics, int cx, int cy, float diameter, long now) {
+    private static void drawBlackHole(GuiGraphics graphics, int cx, int cy, float diameter, long now,
+                                      int cardX, int cardY, int cardW, int cardH) {
         // 旋转速度：盘 3.4°/s 左右，慢到能看清，快到不像静止图。
         float angle = now * 0.00060F;
         // 呼吸：整体尺寸 ±2%，让画面"活着"但不晃。
@@ -130,8 +141,17 @@ public final class BlackHoleCard {
         float d = diameter * breathe;
 
         FxDraw.additive();
+        // 星云与辉光都比卡片大，必须裁到卡片内，否则会糊到界面其它地方。
+        graphics.enableScissor(cardX, cardY, cardX + cardW, cardY + cardH);
+        // 0) 会流动的星云：每 80ms 在 CPU 上重算一次，差速旋转把气团剪成螺旋。
+        //    这一层是"流动感"的主要来源——静态贴图再怎么转都只是整块在转。
+        ResourceLocation nebula = NebulaField.texture();
+        if (nebula != null) {
+            layer(graphics, nebula, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x80FFFFFF);
+        }
         // 1) 辉光
         layer(graphics, TEX_HALO, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
+        graphics.disableScissor();
         // 2) 盘的后半（压扁成椭圆，模拟倾角；视界仍然是正圆，只有盘被压扁）
         layer(graphics, TEX_DISK, cx, cy, d, DISK_SQUASH, angle, 0xF0FFFFFF);
 

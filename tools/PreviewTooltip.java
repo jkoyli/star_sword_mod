@@ -31,6 +31,8 @@ public final class PreviewTooltip {
         Layer ring = new Layer("blackhole_ring.png");
         Layer core = new Layer("blackhole_core.png");
         Layer streak = new Layer("blackhole_streak.png");
+        // 星云是运行时算出来的，这里复刻一份固定时刻的帧
+        Layer nebula = new Layer(nebulaPixels(1.7), NEB_SIZE, NEB_SIZE);
 
         int cardW = 240;
         int cardH = 84;
@@ -54,7 +56,15 @@ public final class PreviewTooltip {
         float diameter = Math.min(GUTTER, cardH) * 0.94F * PX;
 
         long now = Long.parseLong(System.getProperty("t", "1700"));
-        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak);
+        drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula);
+
+        // 文字区的横向渐隐底（与 BlackHoleCard 的 32 条竖带一致）
+        int scrimRight = (cardW - PAD - GUTTER) * PX;
+        for (int i = 0; i < 32; i++) {
+            int sx0 = scrimRight * i / 32;
+            int sx1 = scrimRight * (i + 1) / 32;
+            fillRect(canvas, w, sx0, 0, sx1, h, lerpColorA(0xE6080A10, 0x00080A10, i / 31.0));
+        }
 
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         out.setRGB(0, 0, w, h, canvas, 0, w);
@@ -64,11 +74,12 @@ public final class PreviewTooltip {
     }
 
     private static void drawBlackHole(int[] canvas, int w, int h, float cx, float cy, float diameter, long now,
-                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak) {
+                                      Layer disk, Layer halo, Layer ring, Layer core, Layer streak, Layer nebula) {
         float angle = now * 0.00060F;
         float breathe = 1.0F + 0.02F * (float) Math.sin(now * 0.0016F);
         float d = diameter * breathe;
 
+        nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.15F, 1.0F, -angle * 0.40F, 0x78FFFFFF);
         halo.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
         disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0xF0FFFFFF);
         core.blitAlpha(canvas, w, h, cx, cy, d, 1.0F, 0.0F, 0xF0000000);
@@ -78,6 +89,78 @@ public final class PreviewTooltip {
         int scissorBottom = (int) (cy + d * 0.50F);
         disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0x9AFFFFFF, scissorTop, scissorBottom);
         streak.blitAdditive(canvas, w, h, cx, cy, d * 1.35F, SQUASH, -angle * 0.55F, 0x40BFEFFF);
+    }
+
+    static final int NEB_SIZE = 160;
+
+    /**
+     * 复刻 {@code NebulaField.fill}。两边必须保持一致：改了一边就要改另一边，
+     * 否则预览和游戏里看到的是两种东西。
+     */
+    static int[] nebulaPixels(double t) {
+        int[] out = new int[NEB_SIZE * NEB_SIZE];
+        double half = NEB_SIZE / 2.0;
+        for (int y = 0; y < NEB_SIZE; y++) {
+            for (int x = 0; x < NEB_SIZE; x++) {
+                double nx = (x + 0.5 - half) / half;
+                double ny = (y + 0.5 - half) / half;
+                double r = Math.sqrt(nx * nx + ny * ny);
+                if (r >= 1.0) {
+                    out[y * NEB_SIZE + x] = 0;
+                    continue;
+                }
+                double th = Math.atan2(ny, nx);
+                double shear = 1.35 * t / (0.16 + r * r);
+                double a = th + shear;
+                double lr = Math.log(r + 0.12);
+
+                double n = 0.5
+                        + 0.22 * Math.sin(2.0 * a + 3.0 * lr + 0.90 * t)
+                        + 0.18 * Math.sin(3.0 * a - 2.0 * lr - 1.30 * t + 1.7)
+                        + 0.13 * Math.sin(5.0 * a + 4.0 * lr + 2.10 * t)
+                        + 0.09 * Math.sin(8.0 * a - 6.0 * lr - 2.60 * t + 0.4)
+                        + 0.06 * Math.sin(13.0 * a + 9.0 * lr + 3.40 * t)
+                        + 0.05 * Math.sin(4.0 * a - 1.1 * lr + 0.60 * t + 2.9);                n = Math.max(0, Math.min(1, n));
+                double density = n * n;
+                // 大尺度扇区：让星云出现明暗块，而不是一圈圈均匀的弧
+                double sector = 0.55 + 0.45 * Math.sin(th * 1.0 + 0.7 * t + 0.35);
+                density *= 0.45 + 0.75 * sector;
+
+                double inner = smooth(0.10, 0.34, r);
+                double outer = 1.0 - smooth(0.72, 1.0, r);
+                double alpha = density * inner * outer * 0.52;
+                if (alpha <= 0.004) {
+                    out[y * NEB_SIZE + x] = 0;
+                    continue;
+                }
+                int color = lerpColor(0x0b3b52, 0x7fe8ff, Math.min(1.0, n * 1.15));
+                if (n > 0.86) {
+                    color = lerpColor(color, 0xeaffff, (n - 0.86) / 0.14 * 0.8);
+                }
+                int av = (int) (Math.max(0, Math.min(1, alpha)) * 255.0);
+                out[y * NEB_SIZE + x] = av << 24 | color;
+            }
+        }
+        return out;
+    }
+
+    static int lerpColorA(int a, int b, double k) {
+        k = Math.max(0, Math.min(1, k));
+        int aa = (int) (a >>> 24 & 0xFF) + (int) (((b >>> 24 & 0xFF) - (a >>> 24 & 0xFF)) * k);
+        int c = lerpColor(a & 0xFFFFFF, b & 0xFFFFFF, k);
+        return aa << 24 | c;
+    }
+    static double smooth(double e0, double e1, double v) {
+        double k = Math.max(0, Math.min(1, (v - e0) / (e1 - e0)));
+        return k * k * (3 - 2 * k);
+    }
+
+    static int lerpColor(int c1, int c2, double k) {
+        k = Math.max(0, Math.min(1, k));
+        int r = (int) (c1 >> 16 & 0xFF) + (int) (((c2 >> 16 & 0xFF) - (c1 >> 16 & 0xFF)) * k);
+        int g = (int) (c1 >> 8 & 0xFF) + (int) (((c2 >> 8 & 0xFF) - (c1 >> 8 & 0xFF)) * k);
+        int b = (int) (c1 & 0xFF) + (int) (((c2 & 0xFF) - (c1 & 0xFF)) * k);
+        return r << 16 | g << 8 | b;
     }
 
     // ------------------------------------------------------------------
@@ -93,6 +176,15 @@ public final class PreviewTooltip {
             this.img = ImageIO.read(new File(TEX_DIR.toFile(), name));
             this.tw = img.getWidth();
             this.th = img.getHeight();
+        }
+
+        /** 给动态算出来的图层用（星云）。 */
+        Layer(int[] argb, int w, int h) {
+            BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            image.setRGB(0, 0, w, h, argb, 0, w);
+            this.img = image;
+            this.tw = w;
+            this.th = h;
         }
 
         void blitAdditive(int[] dst, int dw, int dh, float cx, float cy,
@@ -112,6 +204,31 @@ public final class PreviewTooltip {
             blend(dst, dw, dh, cx, cy, size, squashY, angle, argb, false, Integer.MIN_VALUE, Integer.MAX_VALUE);
         }
 
+        private int sampleBilinear(float u, float v) {
+            int x0 = (int) Math.floor(u);
+            int y0 = (int) Math.floor(v);
+            int x1 = Math.min(tw - 1, x0 + 1);
+            int y1 = Math.min(th - 1, y0 + 1);
+            x0 = Math.max(0, Math.min(tw - 1, x0));
+            y0 = Math.max(0, Math.min(th - 1, y0));
+            float fx = u - x0;
+            float fy = v - y0;
+            int c00 = img.getRGB(x0, y0);
+            int c10 = img.getRGB(x1, y0);
+            int c01 = img.getRGB(x0, y1);
+            int c11 = img.getRGB(x1, y1);
+            int a = bilerp(c00 >>> 24 & 0xFF, c10 >>> 24 & 0xFF, c01 >>> 24 & 0xFF, c11 >>> 24 & 0xFF, fx, fy);
+            int r = bilerp(c00 >>> 16 & 0xFF, c10 >>> 16 & 0xFF, c01 >>> 16 & 0xFF, c11 >>> 16 & 0xFF, fx, fy);
+            int g = bilerp(c00 >>> 8 & 0xFF, c10 >>> 8 & 0xFF, c01 >>> 8 & 0xFF, c11 >>> 8 & 0xFF, fx, fy);
+            int b = bilerp(c00 & 0xFF, c10 & 0xFF, c01 & 0xFF, c11 & 0xFF, fx, fy);
+            return a << 24 | r << 16 | g << 8 | b;
+        }
+
+        private int bilerp(int c00, int c10, int c01, int c11, float fx, float fy) {
+            float top = c00 + (c10 - c00) * fx;
+            float bottom = c01 + (c11 - c01) * fx;
+            return Math.round(top + (bottom - top) * fy);
+        }
         private void blend(int[] dst, int dw, int dh, float cx, float cy,
                            float size, float squashY, float angle, int argb,
                            boolean additive, int scissorTop, int scissorBottom) {
@@ -141,11 +258,10 @@ public final class PreviewTooltip {
                     float ly = -dx * sin + uy * cos;
                     if (lx < -half || lx > half || ly < -half || ly > half) continue;
 
-                    float u = (lx + half) / size;
-                    float v = (ly + half) / size;
-                    int texX = Math.min(tw - 1, Math.max(0, (int) (u * tw)));
-                    int texY = Math.min(th - 1, Math.max(0, (int) (v * th)));
-                    int texel = img.getRGB(texX, texY);
+                    // 双线性采样：游戏里这些贴图用 GL_LINEAR，最近邻预览会产生假的摩尔纹
+                    float u = (lx + half) / size * (tw - 1);
+                    float v = (ly + half) / size * (th - 1);
+                    int texel = sampleBilinear(u, v);
 
                     float ta = (texel >>> 24 & 0xFF) / 255.0F * layerA;
                     if (ta <= 0.001F) continue;
