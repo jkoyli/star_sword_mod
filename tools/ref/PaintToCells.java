@@ -26,6 +26,9 @@ public final class PaintToCells {
     public static void main(String[] args) throws Exception {
         File file = new File(args.length > 0 ? args[0] : "tools/original/star_sword_16_x32.png");
         BufferedImage img = ImageIO.read(file);
+        // 形状以原始 16×16 为准：涂过的图很可能被编辑器压成了不透明黑底，
+        // 不加这层门控，整片背景都会被判成"星空格"。
+        BufferedImage shape = ImageIO.read(new File("tools/original/star_sword_git_16.png"));
         int size = Math.min(img.getWidth(), img.getHeight());
         double cell = size / (double) CELLS;
 
@@ -56,7 +59,8 @@ public final class PaintToCells {
                         }
                     }
                 }
-                boolean star = total > 0 && dark > total * 0.25;
+                boolean inside = (shape.getRGB(u, v) >>> 24) > 0;
+                boolean star = inside && total > 0 && dark > total * 0.25;
                 sb.append(star ? '#' : '.');
                 if (star) {
                     marked++;
