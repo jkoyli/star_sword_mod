@@ -1,25 +1,29 @@
 package cn.autoforged.star_sword_mod_1785589476.client.render.cosmic;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.logging.LogUtils;
-import org.slf4j.Logger;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlas;
+import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
-
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 星辉剑专用的 {@link RenderType}：只把着色器换成 {@code cosmic}，其余状态照抄原版物品。
  *
- * <p>顶点格式用 {@code NEW_ENTITY}——1.20.1 里物品/实体走的就是它，用别的格式会和
- * {@code ItemRenderer} 写出的数据对不上。
+ * <p><b>为什么这么绕：</b>原版把 {@code TRANSLUCENT_TRANSPARENCY} / {@code LIGHTMAP}
+ * 这些状态常量声明成 {@code protected static}，而它们在**生产环境里是 SRG 名**。
+ * 日志实测：{@code NoSuchFieldException: TRANSLUCENT_TRANSPARENCY}，
+ * 连 {@code ObfuscationReflectionHelper.findField} 都找不到（该表在生产环境里是空的）。
  *
- * <p>状态常量（{@code TRANSLUCENT_TRANSPARENCY} 等）在原版里是 protected，
- * access transformer 对方法生效、对字段没生效，所以这里改用反射取，取不到就整体回退。
+ * <p>所以这里改成**按类型**取值，一个字段名都不依赖：
+ * 先拿一个现成的 {@code RenderType.entityTranslucent(...)}，把它内部的
+ * {@code CompositeState} 反射出来，再按 {@code instanceof} 分派回 builder 的各个 setter，
+ * 只把 shader 那一项换成我们的。字段名在 reobf 下会变，类型不会。
  */
 public final class CosmicRenderTypes {
 
@@ -39,6 +43,7 @@ public final class CosmicRenderTypes {
         if (cosmic == null) {
             try {
                 cosmic = create();
+                LOGGER.info("[star_sword] cosmic RenderType created");
             } catch (Throwable t) {
                 failed = true;
                 LOGGER.error("[star_sword] cosmic RenderType disabled", t);
@@ -49,10 +54,48 @@ public final class CosmicRenderTypes {
     }
 
     private static RenderType create() throws Exception {
-        RenderStateShard.TransparencyStateShard translucent = state(
-                "TRANSLUCENT_TRANSPARENCY", RenderStateShard.TransparencyStateShard.class);
-        RenderStateShard.LightmapStateShard lightmap = state(
-                "LIGHTMAP", RenderStateShard.LightmapStateShard.class);
+        // 模板：原版物品用的就是它（NEW_ENTITY 格式 + 方块图集 + 半透明 + 光照贴图）
+        RenderType template = RenderType.entityTranslucent(TextureAtlas.LOCATION_BLOCKS);
+
+        Object composite = firstValueOfType(RenderType.class, template, RenderType.CompositeState.class);
+        if (composite == null) {
+            throw new IllegalStateException("RenderType.CompositeState not found on template");
+        }
+
+        RenderType.CompositeState.CompositeStateBuilder builder = RenderType.CompositeState.builder();
+        boolean shaderSet = false;
+        for (Object state : allValues(RenderType.CompositeState.class, composite)) {
+            if (state == null) {
+                continue;
+            }
+            if (state instanceof RenderStateShard.ShaderStateShard) {
+                builder.setShaderState(new RenderStateShard.ShaderStateShard(CosmicShaders::get));
+                shaderSet = true;
+            } else if (state instanceof RenderStateShard.TransparencyStateShard s) {
+                builder.setTransparencyState(s);
+            } else if (state instanceof RenderStateShard.DepthTestStateShard s) {
+                builder.setDepthTestState(s);
+            } else if (state instanceof RenderStateShard.CullStateShard s) {
+                builder.setCullState(s);
+            } else if (state instanceof RenderStateShard.LightmapStateShard s) {
+                builder.setLightmapState(s);
+            } else if (state instanceof RenderStateShard.OverlayStateShard s) {
+                builder.setOverlayState(s);
+            } else if (state instanceof RenderStateShard.WriteMaskStateShard s) {
+                builder.setWriteMaskState(s);
+            } else if (state instanceof RenderStateShard.OutputStateShard s) {
+                builder.setOutputState(s);
+            } else if (state instanceof RenderStateShard.TexturingStateShard s) {
+                builder.setTexturingState(s);
+            } else if (state instanceof RenderStateShard.LayeringStateShard s) {
+                builder.setLayeringState(s);
+            } else if (state instanceof RenderStateShard.EmptyTextureStateShard s) {
+                builder.setTextureState(s);
+            }
+        }
+        if (!shaderSet) {
+            throw new IllegalStateException("template has no ShaderStateShard");
+        }
 
         return RenderType.create("star_sword_cosmic",
                 DefaultVertexFormat.NEW_ENTITY,
@@ -60,24 +103,27 @@ public final class CosmicRenderTypes {
                 256,
                 false,
                 true,
-                RenderType.CompositeState.builder()
-                        .setShaderState(new RenderStateShard.ShaderStateShard(CosmicShaders::get))
-                        .setTextureState(new RenderStateShard.TextureStateShard(
-                                TextureAtlas.LOCATION_BLOCKS, false, false))
-                        .setTransparencyState(translucent)
-                        .setLightmapState(lightmap)
-                        .createCompositeState(true));
+                builder.createCompositeState(true));
     }
 
-    /**
-     * 取原版里 protected 的状态常量。
-     *
-     * <p>**必须走 ObfuscationReflectionHelper**：生产环境里类字段是 SRG 名
-     * （TRANSLUCENT_TRANSPARENCY 运行时叫 f_110101_），直接 getDeclaredField(映射名)
-     * 会抛 NoSuchFieldException——这就是之前 RenderType 创建失败、剑退回白模的原因。
-     */
-    private static <T> T state(String name, Class<T> type) throws Exception {
-        Field field = ObfuscationReflectionHelper.findField(RenderStateShard.class, name);
-        return type.cast(field.get(null));
+    /** 找到 {@code owner} 里第一个类型为 {@code type} 的字段并读出值。 */
+    private static Object firstValueOfType(Class<?> owner, Object instance, Class<?> type) throws Exception {
+        for (Field field : owner.getDeclaredFields()) {
+            if (field.getType() == type) {
+                field.setAccessible(true);
+                return field.get(instance);
+            }
+        }
+        return null;
+    }
+
+    /** 读出 {@code instance} 里所有字段的值（不看名字，按 instanceof 分派）。 */
+    private static List<Object> allValues(Class<?> owner, Object instance) throws Exception {
+        List<Object> out = new ArrayList<>();
+        for (Field field : owner.getDeclaredFields()) {
+            field.setAccessible(true);
+            out.add(field.get(instance));
+        }
+        return out;
     }
 }
