@@ -106,12 +106,20 @@ public final class CosmicRenderTypes {
                 builder.createCompositeState(true));
     }
 
-    /** 找到 {@code owner} 里第一个类型为 {@code type} 的字段并读出值。 */
-    private static Object firstValueOfType(Class<?> owner, Object instance, Class<?> type) throws Exception {
-        for (Field field : owner.getDeclaredFields()) {
-            if (field.getType() == type) {
-                field.setAccessible(true);
-                return field.get(instance);
+    /**
+     * 沿继承链找第一个类型为 {@code type} 的字段并读出值。
+     *
+     * <p>必须走整条继承链：{@code RenderType.entityTranslucent(...)} 实际返回的是子类
+     * {@code CompositeRenderType}，{@code state} 字段声明在子类上，
+     * 只扫 {@code RenderType} 本类会找不到（实测报 "CompositeState not found on template"）。
+     */
+    private static Object firstValueOfType(Class<?> stopAt, Object instance, Class<?> type) throws Exception {
+        for (Class<?> c = instance.getClass(); c != null && stopAt.isAssignableFrom(c); c = c.getSuperclass()) {
+            for (Field field : c.getDeclaredFields()) {
+                if (field.getType() == type) {
+                    field.setAccessible(true);
+                    return field.get(instance);
+                }
             }
         }
         return null;
