@@ -57,6 +57,10 @@ public final class PreviewTooltip {
         float diameter = Math.min(GUTTER, cardH) * 0.94F * PX;
 
         long now = Long.parseLong(System.getProperty("t", "1700"));
+        float shadowR = diameter * 0.273F;
+        int[] lensPx = lensPixels(cardW, cardH, (cardW - PAD - GUTTER / 2.0F), cardH / 2.0F,
+                shadowR, now / 1000.0);
+        blitCover(canvas, w, h, lensPx, 160, 80, 0xECFFFFFF);
         drawBlackHole(canvas, w, h, cx, cy, diameter, now, disk, halo, ring, core, streak, nebula, stars);
 
         // 文字区的横向渐隐底（与 BlackHoleCard 的 32 条竖带一致）
@@ -64,7 +68,7 @@ public final class PreviewTooltip {
         for (int i = 0; i < 32; i++) {
             int sx0 = scrimRight * i / 32;
             int sx1 = scrimRight * (i + 1) / 32;
-            fillRect(canvas, w, sx0, 0, sx1, h, lerpColorA(0xE6080A10, 0x00080A10, i / 31.0));
+            fillRect(canvas, w, sx0, 0, sx1, h, lerpColorA(0xB4080A10, 0x00080A10, i / 31.0));
         }
 
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -80,16 +84,8 @@ public final class PreviewTooltip {
         float breathe = 1.0F + 0.02F * (float) Math.sin(now * 0.0016F);
         float d = diameter * breathe;
 
-        float scrollX = (now * 0.0045F) % 256;
-        float scrollY = (now * 0.0021F) % 256;
-        for (int gx = 0; gx <= 1; gx++) {
-            for (int gy = 0; gy <= 1; gy++) {
-                float px = gx * 256 - scrollX;
-                float py = gy * 256 - scrollY;
-                stars.blitAdditive(canvas, w, h, px + 128, py + 128, 256, 1.0F, 0.0F, 0x90FFFFFF);
-            }
-        }
-        nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x80FFFFFF);
+
+        nebula.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x30FFFFFF);
         halo.blitAdditive(canvas, w, h, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
         disk.blitAdditive(canvas, w, h, cx, cy, d, SQUASH, angle, 0xF0FFFFFF);
         core.blitAlpha(canvas, w, h, cx, cy, d, 1.0F, 0.0F, 0xF0000000);
@@ -177,6 +173,148 @@ public final class PreviewTooltip {
     // 软件合成
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // 深空照片 + 伪引力透镜（复刻 LensField）
+    // ------------------------------------------------------------------
+
+    static final int LENS_W = 160;
+    static final int LENS_H = 80;
+
+    static int[] SRC;
+    static int SRCW;
+    static int SRCH;
+
+    static void loadSource() {
+        if (SRC != null) {
+            return;
+        }
+        try {
+            BufferedImage img = ImageIO.read(new File(TEX_DIR.toFile(), "blackhole_deepspace.png"));
+            SRCW = img.getWidth();
+            SRCH = img.getHeight();
+            SRC = img.getRGB(0, 0, SRCW, SRCH, null, 0, SRCW);
+        } catch (Exception e) {
+            throw new RuntimeException("cannot read blackhole_deepspace.png", e);
+        }
+    }
+
+    static int[] lensPixels(float cardW, float cardH, float holeX, float holeY, float shadowR, double t) {
+        loadSource();
+        int[] out = new int[LENS_W * LENS_H];
+        double scale = SRCW / (cardW * 1.7);
+        double driftX = t * 9.0;
+        double driftY = t * 4.0;
+        double shadow = Math.max(1.0, shadowR);
+
+        for (int j = 0; j < LENS_H; j++) {
+            for (int i = 0; i < LENS_W; i++) {
+                double px = (i + 0.5) / LENS_W * cardW;
+                double py = (j + 0.5) / LENS_H * cardH;
+                double dx = px - holeX;
+                double dy = py - holeY;
+                double dist = Math.sqrt(dx * dx + dy * dy);
+                double ux = dist > 1e-4 ? dx / dist : 0.0;
+                double uy = dist > 1e-4 ? dy / dist : 0.0;
+                double rr = dist / shadow;
+                double ring = Math.exp(-Math.pow((rr - 1.0) / 0.55, 2.0));
+                double bend = rr > 1.0 ? Double.parseDouble(System.getProperty("lens","0.85")) * shadow * ring : 0.0;
+
+                double sr = sampleChannel(px, py, ux, uy, bend * 1.06, scale, driftX, driftY, holeX, holeY, 16);
+                double sg = sampleChannel(px, py, ux, uy, bend, scale, driftX, driftY, holeX, holeY, 8);
+                double sb = sampleChannel(px, py, ux, uy, bend * 0.94, scale, driftX, driftY, holeX, holeY, 0);
+
+                double vig = 0.82 * (1.0 - 0.30 * smooth(0.55, 1.6, rr < 1.0 ? 1.0 : rr));
+                int r = (int) Math.max(0, Math.min(255, sr * vig));
+                int g = (int) Math.max(0, Math.min(255, sg * vig));
+                int b = (int) Math.max(0, Math.min(255, sb * vig));
+                out[j * LENS_W + i] = 0xFF000000 | r << 16 | g << 8 | b;
+            }
+        }
+        return out;
+    }
+
+    static double sampleChannel(double px, double py, double ux, double uy, double bend,
+                                double scale, double driftX, double driftY,
+                                double holeX, double holeY, int shift) {
+        double sx = px + ux * bend;
+        double sy = py + uy * bend;
+        double su = (sx - holeX) * scale + SRCW * 0.5 + driftX;
+        double sv = (sy - holeY) * scale + SRCH * 0.5 + driftY;
+        su = mirror(su, SRCW);
+        sv = mirror(sv, SRCH);
+        int argb = srcBilinear(su, sv);
+        return (argb >> shift) & 0xFF;
+    }
+
+    static double mirror(double v, double period) {
+        double p2 = period * 2.0;
+        double m = v % p2;
+        if (m < 0) {
+            m += p2;
+        }
+        return m < period ? m : p2 - m;
+    }
+
+    static int srcBilinear(double u, double v) {
+        int x0 = (int) Math.floor(u);
+        int y0 = (int) Math.floor(v);
+        int x1 = x0 + 1;
+        int y1 = y0 + 1;
+        x0 = Math.max(0, Math.min(SRCW - 1, x0));
+        y0 = Math.max(0, Math.min(SRCH - 1, y0));
+        x1 = Math.max(0, Math.min(SRCW - 1, x1));
+        y1 = Math.max(0, Math.min(SRCH - 1, y1));
+        double fx = u - Math.floor(u);
+        double fy = v - Math.floor(v);
+        int c00 = SRC[y0 * SRCW + x0];
+        int c10 = SRC[y0 * SRCW + x1];
+        int c01 = SRC[y1 * SRCW + x0];
+        int c11 = SRC[y1 * SRCW + x1];
+        int r = bilerpI(c00 >> 16 & 0xFF, c10 >> 16 & 0xFF, c01 >> 16 & 0xFF, c11 >> 16 & 0xFF, fx, fy);
+        int g = bilerpI(c00 >> 8 & 0xFF, c10 >> 8 & 0xFF, c01 >> 8 & 0xFF, c11 >> 8 & 0xFF, fx, fy);
+        int b = bilerpI(c00 & 0xFF, c10 & 0xFF, c01 & 0xFF, c11 & 0xFF, fx, fy);
+        return 0xFF000000 | r << 16 | g << 8 | b;
+    }
+
+    static int bilerpI(int c00, int c10, int c01, int c11, double fx, double fy) {
+        double top = c00 + (c10 - c00) * fx;
+        double bottom = c01 + (c11 - c01) * fx;
+        return (int) Math.round(top + (bottom - top) * fy);
+    }
+
+    /** 把一帧透镜图拉伸铺满整块画布（画布就是卡片）。 */
+    static void blitCover(int[] canvas, int w, int h, int[] src, int sw, int sh, int argb) {
+        float la = (argb >>> 24 & 0xFF) / 255.0F;
+        for (int y = 0; y < h; y++) {
+            double v = (y + 0.5) / h * sh - 0.5;
+            for (int x = 0; x < w; x++) {
+                double u = (x + 0.5) / w * sw - 0.5;
+                int x0 = (int) Math.floor(u);
+                int y0 = (int) Math.floor(v);
+                int x1 = Math.min(sw - 1, x0 + 1);
+                int y1 = Math.min(sh - 1, y0 + 1);
+                x0 = Math.max(0, Math.min(sw - 1, x0));
+                y0 = Math.max(0, Math.min(sh - 1, y0));
+                double fx = u - Math.floor(u);
+                double fy = v - Math.floor(v);
+                int c00 = src[y0 * sw + x0];
+                int c10 = src[y0 * sw + x1];
+                int c01 = src[y1 * sw + x0];
+                int c11 = src[y1 * sw + x1];
+                int r = bilerpI(c00 >> 16 & 0xFF, c10 >> 16 & 0xFF, c01 >> 16 & 0xFF, c11 >> 16 & 0xFF, fx, fy);
+                int g = bilerpI(c00 >> 8 & 0xFF, c10 >> 8 & 0xFF, c01 >> 8 & 0xFF, c11 >> 8 & 0xFF, fx, fy);
+                int b = bilerpI(c00 & 0xFF, c10 & 0xFF, c01 & 0xFF, c11 & 0xFF, fx, fy);
+                int idx = y * w + x;
+                int dr = canvas[idx] >> 16 & 0xFF;
+                int dg = canvas[idx] >> 8 & 0xFF;
+                int db = canvas[idx] & 0xFF;
+                canvas[idx] = 0xFF000000
+                        | clamp(r * la + dr * (1 - la)) << 16
+                        | clamp(g * la + dg * (1 - la)) << 8
+                        | clamp(b * la + db * (1 - la));
+            }
+        }
+    }
     static final class Layer {
         final BufferedImage img;
         final int tw;

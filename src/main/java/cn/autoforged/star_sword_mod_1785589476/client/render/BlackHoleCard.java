@@ -40,8 +40,8 @@ public final class BlackHoleCard {
     private static final ResourceLocation TEX_CORE = tex("blackhole_core");
     private static final ResourceLocation TEX_STREAK = tex("blackhole_streak");
     private static final ResourceLocation TEX_STARS = tex("blackhole_stars");
-    /** 星空照片的平铺边长，必须等于贴图尺寸。 */
-    private static final int STAR_TILE = 256;
+    /** 事件视界半径占黑洞直径的比例（core 贴图内半径 70/128 的一半取整）。 */
+    private static final float CORE_RADIUS_RATIO = 0.273F;
 
     /** 卡片内边距。 */
     private static final int PAD = 7;
@@ -116,7 +116,7 @@ public final class BlackHoleCard {
         for (int i = 0; i < scrimSteps; i++) {
             int sx0 = x + (scrimRight - x) * i / scrimSteps;
             int sx1 = x + (scrimRight - x) * (i + 1) / scrimSteps;
-            graphics.fill(sx0, y, sx1, y + cardH, lerpColor(CARD_BG, 0x00080A10, i / (float) (scrimSteps - 1)));
+            graphics.fill(sx0, y, sx1, y + cardH, lerpColor(0xB4080A10, 0x00080A10, i / (float) (scrimSteps - 1)));
         }
 
         // 文字与黑洞之间的分隔线，避免文字压到发光的盘上。
@@ -143,30 +143,23 @@ public final class BlackHoleCard {
         float breathe = 1.0F + 0.02F * Mth.sin(now * 0.0016F);
         float d = diameter * breathe;
 
-        FxDraw.additive();
-        // 星云 / 星空 / 辉光都比卡片大，必须裁到卡片内，否则会糊到界面其它地方。
-        graphics.enableScissor(cardX, cardY, cardX + cardW, cardY + cardH);
-
-        // 0) 星空照片：256×256 无缝平铺，沿对角线缓慢漂移，"照片在流动"而不是星云在转。
-        float scrollX = (now * 0.0045F) % STAR_TILE;
-        float scrollY = (now * 0.0021F) % STAR_TILE;
-        for (int gx = 0; gx <= 1; gx++) {
-            for (int gy = 0; gy <= 1; gy++) {
-                float px = cardX + gx * STAR_TILE - scrollX;
-                float py = cardY + gy * STAR_TILE - scrollY;
-                if (px > cardX + cardW || py > cardY + cardH) {
-                    continue;
-                }
-                FxDraw.texQuad(graphics, TEX_STARS, px, py,
-                        px + STAR_TILE, py + STAR_TILE, 0xB4FFFFFF);
-            }
+        // 0) 深空照片 + 伪引力透镜：整张卡片都是背景，靠近视界的部分被径向拉开成环。
+        //    这一层是 alpha 混合而不是加色——它要"盖住"卡片底色，才是真正的背景。
+        float shadowR = d * CORE_RADIUS_RATIO;
+        ResourceLocation lens = LensField.texture(cardW, cardH, cx - cardX, cy - cardY, shadowR);
+        if (lens != null) {
+            FxDraw.alpha();
+            FxDraw.texQuad(graphics, lens, cardX, cardY, cardX + cardW, cardY + cardH, 0xECFFFFFF);
         }
 
-        // 1) 会流动的星云：每 80ms 在 CPU 上重算一次，差速旋转把气团剪成螺旋。
-        //    这一层是"流动感"的主要来源——静态贴图再怎么转都只是整块在转。
+        FxDraw.additive();
+        // 星云 / 辉光都比卡片大，必须裁到卡片内，否则会糊到界面其它地方。
+        graphics.enableScissor(cardX, cardY, cardX + cardW, cardY + cardH);
+
+        // 1) 会流动的星云：叠在照片上，压得很淡，只提供"气在翻"的动势
         ResourceLocation nebula = NebulaField.texture();
         if (nebula != null) {
-            layer(graphics, nebula, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x80FFFFFF);
+            layer(graphics, nebula, cx, cy, d * 2.30F, 1.0F, -angle * 0.40F, 0x30FFFFFF);
         }
         // 2) 辉光
         layer(graphics, TEX_HALO, cx, cy, d * 2.30F, 1.0F, angle * 0.15F, 0x66BFEFFF);
