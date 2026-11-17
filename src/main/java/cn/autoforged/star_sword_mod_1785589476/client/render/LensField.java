@@ -124,7 +124,11 @@ public final class LensField {
             }
             return LOCATION;
         } catch (Throwable t) {
+            // 只在第一次失败时打一次完整堆栈：特效坏掉必须能从日志里看出来，
+            // 而不是变成"背景莫名其妙是黑的"。
             disabled = true;
+            System.err.println("[star_sword] LensField disabled after failure:");
+            t.printStackTrace();
             return null;
         }
     }
@@ -134,6 +138,7 @@ public final class LensField {
             Minecraft mc = Minecraft.getInstance();
             Optional<Resource> resource = mc.getResourceManager().getResource(SOURCE);
             if (resource.isEmpty()) {
+                System.err.println("[star_sword] LensField: resource not found: " + SOURCE);
                 return;
             }
             try (InputStream in = resource.get().open()) {

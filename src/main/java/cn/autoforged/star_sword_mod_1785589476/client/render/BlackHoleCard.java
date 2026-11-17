@@ -40,6 +40,12 @@ public final class BlackHoleCard {
     private static final ResourceLocation TEX_CORE = tex("blackhole_core");
     private static final ResourceLocation TEX_STREAK = tex("blackhole_streak");
     private static final ResourceLocation TEX_STARS = tex("blackhole_stars");
+    /** 深空照片原图，仅作透镜层失败时的兜底。 */
+    private static final ResourceLocation TEX_DEEPSPACE = tex("blackhole_deepspace");
+    private static final int DEEPSPACE_W = 512;
+    private static final int DEEPSPACE_H = 288;
+    /** 只打一次的版本标记：日志里能看出跑的是哪一版特效。 */
+    private static boolean loggedOnce;
     /** 事件视界半径占黑洞直径的比例（core 贴图内半径 70/128 的一半取整）。 */
     private static final float CORE_RADIUS_RATIO = 0.273F;
 
@@ -96,6 +102,11 @@ public final class BlackHoleCard {
             return;
         }
 
+        if (!loggedOnce) {
+            loggedOnce = true;
+            System.out.println("[star_sword] BlackHoleCard v3 (photo + lens + nebula) first render");
+        }
+
         long now = Util.getMillis();
 
         // ---- 卡片本体：投影 + 深色底 + 边框 ----
@@ -147,9 +158,14 @@ public final class BlackHoleCard {
         //    这一层是 alpha 混合而不是加色——它要"盖住"卡片底色，才是真正的背景。
         float shadowR = d * CORE_RADIUS_RATIO;
         ResourceLocation lens = LensField.texture(cardW, cardH, cx - cardX, cy - cardY, shadowR);
+        FxDraw.alpha();
         if (lens != null) {
-            FxDraw.alpha();
             FxDraw.texQuad(graphics, lens, cardX, cardY, cardX + cardW, cardY + cardH, 0xECFFFFFF);
+        } else {
+            // 兜底：动态透镜这一层要是没起来（资源缺失 / 驱动拒绝），至少把照片本身贴上去，
+            // 绝不能退回"一片黑"。代价是没有扭曲、也不会流动。
+            graphics.blit(TEX_DEEPSPACE, cardX, cardY, cardW, cardH,
+                    0.0F, 0.0F, DEEPSPACE_W, DEEPSPACE_H, DEEPSPACE_W, DEEPSPACE_H);
         }
 
         FxDraw.additive();

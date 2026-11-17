@@ -67,8 +67,10 @@ public final class NebulaField {
             }
             return LOCATION;
         } catch (Throwable t) {
-            // 特效永远不该把界面拖垮：出一次错就永久关掉这一层。
+            // 特效永远不该把界面拖垮：出一次错就永久关掉这一层，但必须留下证据。
             disabled = true;
+            System.err.println("[star_sword] NebulaField disabled after failure:");
+            t.printStackTrace();
             return null;
         }
     }
