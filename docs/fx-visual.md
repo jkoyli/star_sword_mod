@@ -144,3 +144,9 @@ java tools/PreviewTooltip.java
 `CosmicRenderTypes` 返回 null → `CosmicModel` 用原版 RenderType →
 显示生成器烘出来的静态星空贴图。整个过程不会把物品画坏。
 总开关：`-Dstar_sword.fx.cosmic=false`。
+### 贴图现在只是遮罩
+
+`star_sword.png` 里**没有任何星空绘制**：所有不透明像素都刷成一个极浅的冷白
+（`lerp(0xbfe8f5, 0xffffff, 原图亮度)`），只为在着色器失效时还能看出是把剑。
+真正的星空全部由 `cosmic.fsh` 实时生成——这与无尽贪婪一致：贴图提供 alpha，颜色交给着色器。
+之前"烘星空 + 叠一层"的做法会让两者互相打架，又暗又糊。

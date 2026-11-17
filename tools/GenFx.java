@@ -233,12 +233,10 @@ public final class GenFx {
                     int px = base[y][x];
                     int out;
 
-                    if (locked[y][x]) {
-                        // 轮廓像素也一起镂空放星空：无尽贪婪那种整块"窗口"，不留金属描边。
-                        // 只把贴边的那一圈调亮一点，保住剪影的可读性。
-                        out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
-                    } else if (opaque[y][x]) {
-                        out = 0xFF000000 | spacePixel(x, y, phase, edgePx[y][x]);
+                    if (opaque[y][x]) {
+                        // 贴图只当**遮罩**：中间什么都不画，星空由 cosmic 着色器实时生成。
+                        // 这里保留一点点原图明暗，只为着色器没起来时还能看出是把剑。
+                        out = 0xFF000000 | maskPixel(x, y, px);
                     } else if (glow[y][x] > 0.002) {
                         out = glowPixel(x, y, phase, px, glow[y][x]);
                     } else {
@@ -266,7 +264,7 @@ public final class GenFx {
                     boolean gotOpaque = ((got >>> 24) & 255) != 0;
                     boolean wantOpaque = opaque[y][x] || (outside[y][x] && glow[y][x] > 0.002);
                     if (gotOpaque != wantOpaque) badBorder++;
-                    if (locked[y][x] && got != (0xFF000000 | spacePixel(x, y, 2 * Math.PI * f / FRAMES, edgePx[y][x]))) badBorder++;
+                    if (locked[y][x] && got != (0xFF000000 | maskPixel(x, y, base[y][x]))) badBorder++;
                 }
             }
         }
@@ -276,9 +274,9 @@ public final class GenFx {
                 int px = base[y][x];
                 int rerender;
                 if (locked[y][x]) {
-                    rerender = 0xFF000000 | spacePixel(x, y, 0.0, edgePx[y][x]);
+                    rerender = 0xFF000000 | maskPixel(x, y, px);
                 } else if (opaque[y][x]) {
-                    rerender = 0xFF000000 | spacePixel(x, y, 0.0, edgePx[y][x]);
+                    rerender = 0xFF000000 | maskPixel(x, y, px);
                 } else if (glow[y][x] > 0.002) {
                     rerender = glowPixel(x, y, 2 * Math.PI, px, glow[y][x]);
                 } else {
@@ -518,6 +516,16 @@ public final class GenFx {
         // 否则整把剑会变成一个平涂的剪影，没有厚度。
         double shade = 0.42 + 1.00 * lum(original);
         return scaleRgb(c, shade);
+    }
+    /**
+     * 遮罩像素：**不再画星空**。
+     *
+     * <p>无尽贪婪的做法是物品贴图只提供 alpha，颜色全部由着色器生成；
+     * 之前那版把星空烘进贴图、再叠一层，颜色和着色器互相打架，才会又暗又糊。
+     * 这里只留一个很浅的底色（跟着原图明暗走），保证着色器没起来时还能看出是把剑。
+     */
+    static int maskPixel(int x, int y, int original) {
+        return lerp(0xbfe8f5, 0xffffff, lum(original));
     }
     /**
      * 轮廓像素的颜色：同样是星空，但整体提亮 + 沿剑身渐变，
