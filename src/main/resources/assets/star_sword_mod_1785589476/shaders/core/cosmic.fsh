@@ -103,6 +103,12 @@ void main() {
     // 光照：沿用物品原本的亮度（手里变亮、暗处变暗），不做纯自发光
     col *= mix(vec3(1.0), vColor.rgb * 1.35, 0.55);
 
-    // 遮罩决定形状：贴图 alpha 之外一律不画
-    fragColor = vec4(clamp(col, 0.0, 1.0), mask.a * Opacity);
+    // 遮罩决定形状：贴图 alpha 之外一律不画。
+    // 这里用 discard 而不是只靠混合 —— 半透明混合下 alpha=0 的像素仍会写深度/影响排序，
+    // 而且一旦某个环节把 alpha 弄丢，整块 quad 就会变成一个方块（就是之前看到的白方框）。
+    float a = mask.a * Opacity;
+    if (a < 0.5) {
+        discard;
+    }
+    fragColor = vec4(clamp(col, 0.0, 1.0), a);
 }
