@@ -28,7 +28,7 @@ out vec4 fragColor;
 const float PI = 3.14159265358979;
 
 // ── 基础数学 ────────────────────────────────────────────────────────────
-mat3 rotAxis(vec3 axis, float angle) {
+mat3 swRot(vec3 axis, float angle) {
     axis = normalize(axis);
     float s = sin(angle);
     float c = cos(angle);
@@ -40,13 +40,13 @@ mat3 rotAxis(vec3 axis, float angle) {
     );
 }
 
-float hash21(vec2 p) {
+float swHash21(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
     p += dot(p, p + 45.32);
     return fract(p.x * p.y);
 }
 
-float hash13(vec3 p) {
+float swHash13(vec3 p) {
     p = fract(p * 0.1031);
     p += dot(p, p.yzx + 33.33);
     return fract((p.x + p.y) * p.z);
@@ -54,30 +54,30 @@ float hash13(vec3 p) {
 
 // 三维值噪声：星云必须是"团"，所以得用真正有空间连续性的噪声，
 // 单纯叠 sin 会得到规则条纹。
-float noise3(vec3 p) {
+float swNoise3(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    float n000 = hash13(i + vec3(0.0, 0.0, 0.0));
-    float n100 = hash13(i + vec3(1.0, 0.0, 0.0));
-    float n010 = hash13(i + vec3(0.0, 1.0, 0.0));
-    float n110 = hash13(i + vec3(1.0, 1.0, 0.0));
-    float n001 = hash13(i + vec3(0.0, 0.0, 1.0));
-    float n101 = hash13(i + vec3(1.0, 0.0, 1.0));
-    float n011 = hash13(i + vec3(0.0, 1.0, 1.0));
-    float n111 = hash13(i + vec3(1.0, 1.0, 1.0));
+    float n000 = swHash13(i + vec3(0.0, 0.0, 0.0));
+    float n100 = swHash13(i + vec3(1.0, 0.0, 0.0));
+    float n010 = swHash13(i + vec3(0.0, 1.0, 0.0));
+    float n110 = swHash13(i + vec3(1.0, 1.0, 0.0));
+    float n001 = swHash13(i + vec3(0.0, 0.0, 1.0));
+    float n101 = swHash13(i + vec3(1.0, 0.0, 1.0));
+    float n011 = swHash13(i + vec3(0.0, 1.0, 1.0));
+    float n111 = swHash13(i + vec3(1.0, 1.0, 1.0));
     return mix(
         mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
         mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
         f.z);
 }
 
-// 四层 fbm：星云的大尺度形状
-float fbm(vec3 p) {
+// 四层 swFbm：星云的大尺度形状
+float swFbm(vec3 p) {
     float sum = 0.0;
     float amp = 0.5;
     for (int i = 0; i < 4; i++) {
-        sum += amp * noise3(p);
+        sum += amp * swNoise3(p);
         p *= 2.03;
         amp *= 0.5;
     }
@@ -101,11 +101,11 @@ void main() {
 
     // ── 星云：主视觉 ────────────────────────────────────────────────────
     // 域扭曲（domain warp）：先拿一层低频噪声去挪采样坐标，
-    // 出来的才是"翻卷的气体"，否则 fbm 只会是均匀的棉絮。
+    // 出来的才是"翻卷的气体"，否则 swFbm 只会是均匀的棉絮。
     vec3 q = dir * 2.1 * ExternalScale;
-    float warp = noise3(q * 1.6 + 11.3);
-    float neb = fbm(q + warp * 0.85);
-    float neb2 = fbm(q * 2.7 - warp * 0.45 + 5.1);
+    float warp = swNoise3(q * 1.6 + 11.3);
+    float neb = swFbm(q + warp * 0.85);
+    float neb2 = swFbm(q * 2.7 - warp * 0.45 + 5.1);
 
     // 底色：深空蓝黑
     vec3 col = vec3(0.015, 0.020, 0.045);
@@ -126,7 +126,7 @@ void main() {
             sin(fi * 12.9898 + 1.3),
             cos(fi * 78.233 + 2.7),
             sin(fi * 37.719 + 0.9)));
-        vec3 ray = rotAxis(axis, fi * 2.39996) * dir;
+        vec3 ray = swRot(axis, fi * 2.39996) * dir;
 
         float u = 0.5 + atan(ray.z, ray.x) / (2.0 * PI);
         float v = 0.5 + asin(clamp(ray.y, -1.0, 1.0)) / PI;
@@ -135,7 +135,7 @@ void main() {
         vec2 uv = vec2(u, v) * scale * ExternalScale;
         vec2 g = uv * 24.0;
         vec2 cell = floor(g);
-        float h = hash21(cell + vec2(fi * 17.0, fi * 5.0));
+        float h = swHash21(cell + vec2(fi * 17.0, fi * 5.0));
         if (h > 0.992) {
             vec2 f = fract(g) - 0.5;
             float d = length(f);
