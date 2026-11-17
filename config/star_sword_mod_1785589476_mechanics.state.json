@@ -1,0 +1,19 @@
+{
+  "mod_version": "2.3.4",
+  "loaded_at": 1794909989720,
+  "heartbeat": 1794909997706,
+  "in_world": false,
+  "player": "",
+  "dimension": "",
+  "presets_pushed": false,
+  "presets_pushed_at": 0,
+  "last_error": "",
+  "values": {
+    "anti_disarm": false,
+    "remove_mode": false,
+    "counterattack": false,
+    "reflection": false,
+    "spawn_prevention": false,
+    "health_lock_strict": false
+  }
+}

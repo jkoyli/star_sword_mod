@@ -1,0 +1,54 @@
+// Self-attaching Java agent used by the mod (POC).
+//
+// This is deliberately a separate, dependency-free jar: an agent jar has to be a
+// real file on disk, is loaded by the *system* class loader of the game JVM and
+// therefore must not share classes with the mod (which lives in ModLauncher's
+// GAME layer). Javassist is shaded in so the agent needs nothing from the game.
+//
+// The jar is embedded into the mod jar by the root project's processResources.
+
+plugins {
+    id 'java'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+group = 'cn.autoforged.star_sword_mod_1785589476'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.javassist:javassist:3.30.2-GA'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // The attacher talks to jdk.attach through reflection, so no --add-modules is
+    // needed here; this keeps the jar loadable on JREs that lack the module.
+}
+
+jar {
+    archiveBaseName = 'star_sword_agent'
+    // Shade Javassist into the agent jar: the agent runs on the system class path
+    // and cannot rely on the mod's class loader.
+    from({
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }) {
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes(
+                // premain = normal -javaagent (used by the standalone verification),
+                // agentmain = loaded at runtime through the attach API.
+                'Premain-Class'            : 'cn.autoforged.star_sword_mod_1785589476.agent.StarSwordAgent',
+                'Agent-Class'              : 'cn.autoforged.star_sword_mod_1785589476.agent.StarSwordAgent',
+                'Main-Class'               : 'cn.autoforged.star_sword_mod_1785589476.agent.Attacher',
+                'Can-Retransform-Classes'  : 'true',
+                'Can-Redefine-Classes'     : 'true'
+        )
+    }
+}

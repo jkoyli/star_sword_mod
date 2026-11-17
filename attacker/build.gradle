@@ -1,0 +1,62 @@
+// TEST HARNESS, not production code.
+//
+// A deliberately hostile Java agent that plays the role of an "opposing mod":
+// it attaches to the running game *after* our agent has injected its guard and
+// rewrites the same method, so we can verify that our watchdog notices the
+// hijack and restores the guard.
+//
+// Like agent/build.gradle this is a standalone jar: an agent jar must be a real
+// file on disk, is loaded by the *system* class loader of the game JVM, and
+// must therefore not share classes with the mod (GAME layer of ModLauncher).
+// Javassist is shaded in so the attacker needs nothing from the game.
+//
+// build.gradle mirror of agent/build.gradle on purpose: same shading strategy,
+// same manifest keys, same Java 17 toolchain.
+
+plugins {
+    id 'java'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+group = 'cn.autoforged.attacker'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.javassist:javassist:3.30.2-GA'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // Attacker talks to jdk.attach through reflection only; no --add-modules,
+    // so the jar still loads (and reports a clear error) on JREs without it.
+}
+
+jar {
+    archiveBaseName = 'attacker'
+    // The harness references the artifact by its plain name: attacker/build/libs/attacker.jar
+    archiveVersion = ''
+    // Shade Javassist into the attacker jar: the agent runs on the system class
+    // path and cannot rely on the mod's or the game's class loader.
+    from({
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }) {
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes(
+                // premain = normal -javaagent (handy for focused harness runs),
+                // agentmain = loaded at runtime through the attach API.
+                'Premain-Class'           : 'cn.autoforged.attacker.AttackerAgent',
+                'Agent-Class'             : 'cn.autoforged.attacker.AttackerAgent',
+                'Main-Class'              : 'cn.autoforged.attacker.Attacker',
+                'Can-Retransform-Classes' : 'true',
+                'Can-Redefine-Classes'    : 'true'
+        )
+    }
+}

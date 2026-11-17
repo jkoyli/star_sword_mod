@@ -1,0 +1,22 @@
+# Disable autocrlf on generated files, they always generate with LF
+# Add any extra files or paths here to make git stop saying they
+# are changed when only line endings change.
+src/generated/**/.cache/cache text eol=lf
+src/generated/**/*.json text eol=lf
+
+# ---------------------------------------------------------------------------
+# Dev / test-only paths: never part of a source release.
+# `export-ignore` drops them from `git archive` (a source tarball); it does NOT
+# stop them from being committed — that is .gitignore's job.
+# ---------------------------------------------------------------------------
+# Standalone attacker test harness (simulates an opposing agent); not shipped.
+attacker/** export-ignore
+# Local Gradle run directory (worlds, logs, config dumps) created by runClient.
+run/** export-ignore
+# Build outputs of the three Gradle projects.
+build/** export-ignore
+agent/build/** export-ignore
+attacker/build/** export-ignore
+.gradle/** export-ignore
+# Third-party artifacts pinned for the offline build, re-downloadable and not ours.
+gradle/local-maven/** export-ignore

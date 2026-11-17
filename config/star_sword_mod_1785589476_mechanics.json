@@ -1,0 +1,10 @@
+{
+  "values": {
+    "anti_disarm": false,
+    "remove_mode": false,
+    "counterattack": false,
+    "reflection": false,
+    "spawn_prevention": false,
+    "health_lock_strict": false
+  }
+}

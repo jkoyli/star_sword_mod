@@ -1,0 +1,13 @@
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'star_sword_mod-source'
+
+include 'agent'
+
+// Test harness: a hostile second agent used to verify the watchdog restores our guard.
+include 'attacker'
+
+// Standalone pre-launch settings editor (JDK 17 + Swing only, no Minecraft/Forge deps).
+include 'mechanic-editor'

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/diamond_sword",
+  "textures": {
+    "layer0": "star_sword_mod_1785589476:item/star_sword"
+  }
+}

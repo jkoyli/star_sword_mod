@@ -1,0 +1,127 @@
+// Build workarounds for networks that cannot reach https://maven.neoforged.net.
+// ModDevGradle registers that host as the *first* repository, so a single
+// connection timeout there aborts dependency resolution even when every other
+// repo would answer.
+//
+// Two things go wrong on such a network:
+//  1) Forge's POMs request dynamic versions (net.jodah:typetools:0.6.+,
+//     log4j-api/core:2.11.+, cpw.mods:modlauncher:10.0.+). Resolving those
+//     requires listing versions on maven.neoforged.net.
+//  2) modlauncher:10.0.9, mixin:0.8.5:processor and net.neoforged:AutoRenamingTool
+//     are not in the Gradle cache and are likewise only requested from the
+//     unreachable repo (AutoRenamingTool normally comes from ~/.m2, but Gradle
+//     asks the NeoForged repo for its POM first and aborts on the timeout).
+//
+// Fix: pin the dynamic versions to the releases Forge 1.20.1 actually resolves
+// (see build/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties),
+// and serve the missing artifacts from gradle/local-maven, which is placed at
+// the front of the repository list. Everything already cached keeps working.
+//
+// Nothing here is needed on a machine with unrestricted access to
+// maven.neoforged.net: the pins then simply match what would be resolved anyway.
+
+import java.net.HttpURLConnection
+import java.net.URL
+
+// group:artifact -> concrete version, for every dynamic ("x.y.+") request.
+def pinnedVersions = [
+    'net.jodah:typetools'                : '0.6.3',
+    'org.apache.logging.log4j:log4j-api' : '2.19.0',
+    'org.apache.logging.log4j:log4j-core': '2.19.0',
+    'cpw.mods:modlauncher'               : '10.0.9'
+]
+
+// Extra classifiers that are not part of the maven coordinate itself.
+def extraFiles = [
+    'org.spongepowered:mixin:0.8.5'          : ['mixin-0.8.5.pom', 'mixin-0.8.5.jar', 'mixin-0.8.5-processor.jar'],
+    // Only published on maven.neoforged.net; usually already present in ~/.m2.
+    'net.neoforged:AutoRenamingTool:2.0.4'   : ['AutoRenamingTool-2.0.4.pom', 'AutoRenamingTool-2.0.4.jar',
+                                                'AutoRenamingTool-2.0.4-all.jar']
+]
+
+def mirrors = [
+    'https://maven.minecraftforge.net',
+    'https://repo.maven.apache.org/maven2',
+    'https://repo.spongepowered.org/repository/maven-public'
+]
+
+// Anything already in the local maven repo is copied instead of downloaded.
+def localRepos = [new File(System.getProperty('user.home'), '.m2/repository')]
+
+def pinsDir = file("$rootDir/gradle/local-maven")
+pinsDir.mkdirs()
+
+// path -> file names that must exist below gradle/local-maven
+def required = [:]
+pinnedVersions.each { coord, version ->
+    def (group, artifact) = coord.split(':')
+    def path = "${group.replace('.', '/')}/${artifact}/${version}"
+    required[path] = ["${artifact}-${version}.pom", "${artifact}-${version}.jar"]
+}
+extraFiles.each { coord, files ->
+    def (group, artifact, version) = coord.split(':')
+    def path = "${group.replace('.', '/')}/${artifact}/${version}"
+    required.computeIfAbsent(path, { [] }).addAll(files)
+}
+
+def download = { URL url, File target ->
+    HttpURLConnection conn = null
+    try {
+        conn = (HttpURLConnection) url.openConnection()
+        conn.connectTimeout = 8000
+        conn.readTimeout = 20000
+        conn.instanceFollowRedirects = true
+        if (conn.responseCode != 200) {
+            return false
+        }
+        def tmp = new File(target.parentFile, target.name + '.part')
+        target.parentFile.mkdirs()
+        conn.inputStream.withStream { input ->
+            tmp.withOutputStream { output -> output << input }
+        }
+        return tmp.renameTo(target)
+    } catch (Exception ignored) {
+        return false
+    } finally {
+        conn?.disconnect()
+    }
+}
+
+required.each { path, files ->
+    files.each { name ->
+        def target = new File(pinsDir, "${path}/${name}")
+        if (target.isFile() && target.length() > 0) {
+            return
+        }
+        def local = localRepos.collect { new File(it, "${path}/${name}") }.find { it.isFile() }
+        if (local != null) {
+            target.parentFile.mkdirs()
+            target.bytes = local.bytes
+            return
+        }
+        def fetched = mirrors.any { download(new URL("${it}/${path}/${name}"), target) }
+        if (!fetched) {
+            logger.warn("[local-pins] Could not fetch ${path}/${name}; the build " +
+                    'may fail if the artifact is not already in the Gradle cache.')
+        }
+    }
+}
+
+allprojects { p ->
+    p.configurations.configureEach { c ->
+        pinnedVersions.each { coord, version -> c.resolutionStrategy.force "${coord}:${version}" }
+        // Never re-check dynamic versions on a repo that cannot be reached.
+        c.resolutionStrategy.cacheDynamicVersionsFor 365, 'days'
+        c.resolutionStrategy.cacheChangingModulesFor 365, 'days'
+    }
+    p.afterEvaluate {
+        // Prepend the local mirror; ModDevGradle registers the NeoForged repo first.
+        def existing = p.repositories.toList()
+        p.repositories.clear()
+        p.repositories.maven { repo ->
+            repo.name = 'Local Pins'
+            repo.url = pinsDir.toURI()
+        }
+        existing.each { p.repositories.add(it) }
+    }
+}

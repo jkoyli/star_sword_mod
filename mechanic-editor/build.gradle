@@ -1,0 +1,32 @@
+// 独立的「星辉剑」机制配置编辑器（启动前配置用）。
+//
+// 硬约束（照搬 stardome-editor 的做法）：只依赖 JDK 17 + Swing，绝不 import net.minecraft.* /
+// net.minecraftforge.*。这样它能在游戏未启动、甚至没装 Forge 的机器上单独运行，
+// 先把开关写进 config/star_sword_mod_1785589476_mechanics.json，再启动游戏。
+plugins {
+    id 'application'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+application {
+    mainClass = 'cn.autoforged.star_sword_mod_1785589476.editor.MechanicEditorMain'
+}
+
+jar {
+    // 文件名自带版本提示：双击时报「Java Exception」时，用户能一眼看出这是 Java 17 的东西。
+    archiveFileName = 'star_sword_mechanic_editor-java17.jar'
+    manifest {
+        attributes 'Main-Class': 'cn.autoforged.star_sword_mod_1785589476.editor.MechanicEditorMain'
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // 显式钉住字节码版本，避免有人换更高 JDK 编译出「只能新 JDK 跑」的产物。
+    options.release = 17
+}

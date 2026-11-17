@@ -1,0 +1,24 @@
+{
+    "required": false,
+    "injectors": {
+        "defaultRequire": 1
+    },
+    "plugin": "cn.autoforged.star_sword_mod_1785589476.mixinmon.StarSwordMixinConfigPlugin",
+    "package": "cn.autoforged.star_sword_mod_1785589476.mixin",
+    "compatibilityLevel": "JAVA_17",
+    "refmap": "star_sword_mod_1785589476.refmap.json",
+    "mixins": [
+        "LivingEntityMixin",
+        "EntityMixin",
+        "EntityIsRemovedMixin",
+        "PlayerMixin",
+        "ServerPlayerMixin",
+        "SynchedEntityDataMixin",
+        "PersistentEntitySectionManagerAccessor"
+    ],
+    "client": [
+        "ClientPacketListenerMixin",
+        "LocalPlayerMixin"
+    ],
+    "server": []
+}
