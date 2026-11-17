@@ -5,15 +5,13 @@ import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.resources.model.BakedModel;
-import net.minecraft.client.resources.model.ModelResourceLocation;
+
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ModelEvent;
 import net.minecraftforge.client.event.RegisterShadersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-
-import java.io.IOException;
 
 /**
  * 星辉剑"球面星空"着色器的注册与 uniform 更新。
@@ -28,20 +26,52 @@ import java.io.IOException;
 @Mod.EventBusSubscriber(modid = StarSwordMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class CosmicShaders {
 
-    /** 总开关。 */
+    /**
+     * 总开关。
+     *
+     * <p>{@code -Dstar_sword.fx.cosmic=false} 关掉整条着色器链路。
+     */
     public static final boolean ENABLED =
             !"false".equalsIgnoreCase(System.getProperty("star_sword.fx.cosmic", "true"));
+
+    /** 注册失败标记：着色器编译不出来时不要每次都重试，也不要让渲染层以为可画。 */
+    private static volatile boolean failed;
 
     private static ShaderInstance cosmic;
 
     private CosmicShaders() {
     }
 
+    /**
+     * 注册着色器。
+     *
+     * <p><b>必须 try/catch</b>：{@link ShaderInstance} 的构造函数会当场读 json 并编译，
+     * 任何一步失败都会抛 {@link java.io.IOException}；事件处理器里让它冒出去会被 Forge
+     * 当成致命错误直接崩游戏（2.3.6 实机就崩在
+     * {@code FileNotFoundException: minecraft:shaders/core/cosmic.json} 上）。
+     * 这里退化成「没有星空效果」，模型自动回退原版 RenderType。
+     *
+     * <p>注意 json 的位置：{@code ShaderInstance} 的字符串构造函数把名字拼成
+     * {@code minecraft:shaders/core/<name>.json}，所以 json 必须放在
+     * {@code assets/minecraft/shaders/core/}；而 json 里的 {@code vertex}/{@code fragment}
+     * 可以显式写我们的命名空间（现在是 {@code star_sword_mod_...:cosmic}），
+     * 因此 vsh/fsh 仍然留在 {@code assets/star_sword_mod_.../shaders/core/} 下。
+     */
     @SubscribeEvent
-    public static void onRegisterShaders(RegisterShadersEvent event) throws IOException {
-        event.registerShader(
-                new ShaderInstance(event.getResourceProvider(), "cosmic", DefaultVertexFormat.NEW_ENTITY),
-                shader -> cosmic = shader);
+    public static void onRegisterShaders(RegisterShadersEvent event) {
+        if (!ENABLED || failed) {
+            return;
+        }
+        try {
+            event.registerShader(
+                    new ShaderInstance(event.getResourceProvider(), "cosmic", DefaultVertexFormat.NEW_ENTITY),
+                    shader -> cosmic = shader);
+        } catch (Throwable throwable) {
+            failed = true;
+            cosmic = null;
+            System.err.println("[star_sword] cosmic 着色器注册失败，已回退原版渲染："
+                    + throwable);
+        }
     }
 
     /** 拿到当前着色器；没编译成功（或开关关掉）时返回 {@code null}，调用方据此回退。 */
@@ -83,14 +113,30 @@ public final class CosmicShaders {
         if (!ENABLED) {
             return;
         }
-        ModelResourceLocation key = new ModelResourceLocation(
-                new ResourceLocation(StarSwordMod.MOD_ID, "star_sword"), "inventory");
-        BakedModel original = event.getModels().get(key);
-        if (original != null) {
-            event.getModels().put(key, new CosmicModel(original));
+        String namespace = StarSwordMod.MOD_ID;
+        int wrapped = 0;
+        StringBuilder seen = new StringBuilder();
+        // 不猜模型键的写法（inventory / #inventory / item/…），
+        // 直接扫一遍所有烘焙结果，按 namespace + path 匹配这把剑。
+        for (java.util.Map.Entry<ResourceLocation, BakedModel> entry
+                : new java.util.ArrayList<>(event.getModels().entrySet())) {
+            ResourceLocation key = entry.getKey();
+            boolean match = key.getNamespace().equals(namespace)
+                    && key.getPath().contains("star_sword");
+            if (!match) {
+                if (key.getNamespace().equals(namespace) && seen.length() < 400) {
+                    seen.append("\n  ").append(key);
+                }
+                continue;
+            }
+            event.getModels().put(key, new CosmicModel(entry.getValue()));
+            wrapped++;
+        }
+        if (wrapped == 0) {
+            System.err.println("[star_sword] cosmic: no baked model matched; mod models seen:" + seen);
         } else {
-            // 键名对不上就什么都不做：宁可没效果，也不能把物品画坏
-            System.err.println("[star_sword] cosmic: model not found for " + key);
+            System.out.println("[star_sword] cosmic: wrapped " + wrapped + " model(s), shader="
+                    + (cosmic != null));
         }
     }
 }

@@ -74,7 +74,7 @@ public class StarSwordItem extends SwordItem {
      * {@code -Dstar_sword.fx.glint=false}，或者直接把这个方法改成返回 false。
      */
     private static final boolean GLINT =
-            !"false".equalsIgnoreCase(System.getProperty("star_sword.fx.glint", "true"));
+            "true".equalsIgnoreCase(System.getProperty("star_sword.fx.glint", "false"));
 
     @Override
     public boolean isFoil(ItemStack stack) {
