@@ -16,9 +16,8 @@
 
 ## 1. 剑的星空流转 + 边缘泛光
 
-- `assets/star_sword_mod_1785589476/textures/item/star_sword.png`
-  是一张**竖向帧序列**（40 宽 × 40×96 高），旁边带
-  `star_sword.png.mcmeta`（`frametime=1`、`interpolate=true`）。
+- `assets/star_sword_mod_1785589476/textures/item/star_sword.png` 是**单帧静态图**（40×40），
+  没有 `.mcmeta`：剑内的星空不做时间动画，靠剑本身随视角/身体转动来产生"在动"的感觉。
 - 画布 40×40：原 16×16 图**最近邻放大 2 倍**（32×32）居中，四周留 4 像素空白专给泛光。
   这个比例是有意的——原版把贴图映射到 16×16 的模型空间，画布超过 ~40 就会在常见
   GUI 缩放下被 mipmap 压得太狠，细节（尤其是那圈边缘光）会被抹平。

@@ -29,7 +29,7 @@ public final class GenFx {
     static final int ART = SRC * SCALE;     // 64：画在画布中间的原图
     static final int MARGIN = 4;            // 四周留白，专门给泛光用
     static final int FRAME = ART + MARGIN * 2;  // 80
-    static final int FRAMES = 96;
+    static final int FRAMES = 1;   // 不做时间动画：星空图是静态的，随剑本身转动
     static final int BORDER = SCALE;        // 原图最外圈 1 像素（=4 texel）永远不动
 
     /* palette: same family as the original cyan/blue/white blade */
@@ -249,9 +249,8 @@ public final class GenFx {
 
         /* ---- 5. write strip + mcmeta ---- */
         ImageIO.write(strip, "PNG", swordPng.toFile());
-        String mcmeta = "{\"animation\":{\"frametime\":1,\"interpolate\":true}}";
-        Files.write(swordPng.resolveSibling("star_sword.png.mcmeta"),
-                mcmeta.getBytes(StandardCharsets.UTF_8));
+        // 静态单帧：删掉遗留的动画描述文件，否则会被当成"40 帧序列"去切
+        Files.deleteIfExists(swordPng.resolveSibling("star_sword.png.mcmeta"));
 
         /* ---- 6. verify: border bytes + transparency + loop seam ---- */
         BufferedImage check = ImageIO.read(swordPng.toFile());
