@@ -63,9 +63,16 @@ public final class CosmicShaders {
             return;
         }
         try {
+            // 必须传**带命名空间的完整 ID**：只传 "cosmic" 会被当成 minecraft:cosmic，
+            // 于是 json / vsh / fsh 都去 assets/minecraft/shaders/core/ 下找，找不到就静默失效，
+            // 表现就是"剑变成一块白模、只有光照在变"。
+            ResourceLocation id = new ResourceLocation(StarSwordMod.MOD_ID, "cosmic");
             event.registerShader(
-                    new ShaderInstance(event.getResourceProvider(), "cosmic", DefaultVertexFormat.NEW_ENTITY),
-                    shader -> cosmic = shader);
+                    new ShaderInstance(event.getResourceProvider(), id, DefaultVertexFormat.NEW_ENTITY),
+                    shader -> {
+                        cosmic = shader;
+                        System.out.println("[star_sword] cosmic shader registered: " + id);
+                    });
         } catch (Throwable throwable) {
             failed = true;
             cosmic = null;
