@@ -17,6 +17,10 @@ uniform float Pitch;
 uniform float ExternalScale;
 uniform float Opacity;
 
+// 星点密度：越大星点越细。剑在屏幕上一个像素太小，20 会显得"放大过度"，
+// 48 大约是把星点缩到原来的 40%。想更细就继续往上调（64 / 80）。
+const float STAR_DENSITY = 48.0;
+
 in vec3 vPosition;
 in vec2 vUv;
 in vec4 vColor;
@@ -78,13 +82,13 @@ void main() {
         vec2 uv = vec2(u, v) * scale * ExternalScale;
 
         // 星点：格点哈希，格子内一个柔和的亮点
-        vec2 g = uv * 20.0;
+        vec2 g = uv * STAR_DENSITY;
         vec2 cell = floor(g);
         float h = hash21(cell + vec2(fi * 31.7, fi * 11.3));
-        if (h > 0.972) {
+        if (h > 0.965) {
             vec2 f = fract(g) - 0.5;
             float bright = (h - 0.972) / 0.028;
-            float star = smoothstep(0.42, 0.0, length(f)) * bright;
+            float star = smoothstep(0.30, 0.0, length(f)) * bright;
             // 远处（层号小）的星更小更暗，近处更大更亮
             float atten = 0.30 + 0.70 / (1.0 + fi * 0.55);
             col += vec3(0.72, 0.90, 1.0) * star * atten;
