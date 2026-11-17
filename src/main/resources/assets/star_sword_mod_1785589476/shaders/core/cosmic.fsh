@@ -17,9 +17,10 @@ uniform float Pitch;
 uniform float ExternalScale;
 uniform float Opacity;
 
-// 星点密度：越大星点越细。剑在屏幕上一个像素太小，20 会显得"放大过度"，
-// 48 大约是把星点缩到原来的 40%。想更细就继续往上调（64 / 80）。
-const float STAR_DENSITY = 48.0;
+// 星点密度：越大星点越细。剑在屏幕上一个像素太小，20 会显得"放大过度"；
+// 48 是一档，96 是现在的值。想更细就继续往上调（128 / 160），
+// 但注意 16 像素的物品上过密会出现闪烁（摩尔纹）。
+const float STAR_DENSITY = 96.0;
 
 in vec3 vPosition;
 in vec2 vUv;
@@ -85,10 +86,12 @@ void main() {
         vec2 g = uv * STAR_DENSITY;
         vec2 cell = floor(g);
         float h = hash21(cell + vec2(fi * 31.7, fi * 11.3));
-        if (h > 0.965) {
+        if (h > 0.985) {
             vec2 f = fract(g) - 0.5;
-            float bright = (h - 0.972) / 0.028;
-            float star = smoothstep(0.30, 0.0, length(f)) * bright;
+            float bright = (h - 0.985) / 0.015;
+            // 收成"一个亮点 + 很薄的晕"：小星不能靠大半径的软圆，否则就是一团糊
+            float d = length(f);
+            float star = (smoothstep(0.20, 0.0, d) + 0.35 * smoothstep(0.42, 0.0, d)) * bright;
             // 远处（层号小）的星更小更暗，近处更大更亮
             float atten = 0.30 + 0.70 / (1.0 + fi * 0.55);
             col += vec3(0.72, 0.90, 1.0) * star * atten;
@@ -103,6 +106,18 @@ void main() {
             col += vec3(0.05, 0.16, 0.20) * haze * (0.35 + 0.65 / (1.0 + fi));
         }
     }
+
+    // ── 棕色的星际尘埃 ──────────────────────────────────────────────
+    // 原图里那层暖褐色雾状物：低频、几乎不随时间变，只跟着视线方向走，
+    // 所以转动视角时它和星空一起"转"，但本身不会闪烁。
+    float dust = 0.0;
+    dust += 0.55 * sin(3.1 * dir.x + 1.7) * sin(2.7 * dir.y + 0.4) * sin(3.3 * dir.z + 2.2);
+    dust += 0.30 * sin(7.3 * dir.x - 0.9) * sin(6.1 * dir.y + 3.1) * sin(7.7 * dir.z + 1.3);
+    dust += 0.15 * sin(13.1 * dir.x + 2.4) * sin(11.7 * dir.y - 1.8) * sin(12.3 * dir.z + 0.7);
+    dust = clamp(dust * 0.5 + 0.5, 0.0, 1.0);
+    dust = pow(dust, 2.2);
+    // 暖褐色：比黑色亮一档，作为"背景雾"垫在星点下面
+    col = mix(col, vec3(0.26, 0.16, 0.10), dust * 0.55);
 
     // 光照：沿用物品原本的亮度（手里变亮、暗处变暗），不做纯自发光
     col *= mix(vec3(1.0), vColor.rgb * 1.35, 0.55);
