@@ -10,6 +10,8 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 
 import java.lang.reflect.Field;
 
+import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
+
 /**
  * 星辉剑专用的 {@link RenderType}：只把着色器换成 {@code cosmic}，其余状态照抄原版物品。
  *
@@ -67,9 +69,15 @@ public final class CosmicRenderTypes {
                         .createCompositeState(true));
     }
 
+    /**
+     * 取原版里 protected 的状态常量。
+     *
+     * <p>**必须走 ObfuscationReflectionHelper**：生产环境里类字段是 SRG 名
+     * （TRANSLUCENT_TRANSPARENCY 运行时叫 f_110101_），直接 getDeclaredField(映射名)
+     * 会抛 NoSuchFieldException——这就是之前 RenderType 创建失败、剑退回白模的原因。
+     */
     private static <T> T state(String name, Class<T> type) throws Exception {
-        Field field = RenderStateShard.class.getDeclaredField(name);
-        field.setAccessible(true);
+        Field field = ObfuscationReflectionHelper.findField(RenderStateShard.class, name);
         return type.cast(field.get(null));
     }
 }
