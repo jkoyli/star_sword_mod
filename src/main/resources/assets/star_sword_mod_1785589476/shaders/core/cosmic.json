@@ -1,0 +1,30 @@
+{
+  "blend": {
+    "func": "add",
+    "src": "srcalpha",
+    "dst": "1-srcalpha"
+  },
+  "vertex": "star_sword_mod_1785589476:cosmic",
+  "fragment": "star_sword_mod_1785589476:cosmic",
+  "attributes": [
+    "Position",
+    "Color",
+    "UV0",
+    "UV1",
+    "UV2",
+    "Normal"
+  ],
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "Yaw", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Pitch", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "ExternalScale", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Opacity", "type": "float", "count": 1, "values": [ 1.0 ] }
+  ]
+}

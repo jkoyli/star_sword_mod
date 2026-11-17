@@ -118,3 +118,29 @@ java tools/PreviewTooltip.java
   的图标绘制，还要自己复刻 `item/handheld` 的 display 变换，画错就是图标变歪或变黑。
 - 黑洞没有做真正的引力透镜后处理（要读主 framebuffer + 全屏 UV 扭曲），
   现在的层次感是靠"盘的后半 / 视界 / 盘的前半"三段叠出来的。
+
+## 5. 球面星空着色器（照抄 Avaritia 的做法）
+
+参考实现：`SpitefulFox/Avaritia` 的 `render/CosmicItemRenderer` + `shader/cosmic.frag`
+（已存档到 `tools/ref/avaritia/`）。核心只有三句话：
+
+1. 物品贴图**只当 alpha 遮罩**，颜色完全由着色器算；
+2. 片元里把视线方向按玩家 **yaw / pitch** 旋转，再按球面坐标 `atan(z,x)` / `asin(y)` 采样星空；
+3. 叠十几层各自随机旋转的星空 → 转动视角时看到的是同一个天球的不同部分。
+
+本模组的实现：
+
+| 文件 | 作用 |
+|---|---|
+| `shaders/core/cosmic.json` | 顶点格式 `NEW_ENTITY`（物品的真实格式），uniforms：Yaw / Pitch / ExternalScale / Opacity |
+| `shaders/core/cosmic.vsh` | 把模型空间坐标、UV、顶点色传给片元 |
+| `shaders/core/cosmic.fsh` | 旋转视线 → 球面坐标 → 12 层哈希星点 + 星云；alpha 取遮罩 |
+| `client/render/cosmic/CosmicShaders` | 注册着色器、每帧写 uniform、把模型包一层 |
+| `client/render/cosmic/CosmicRenderTypes` | 只换 Shader 的 RenderType（其余状态照抄物品） |
+| `client/render/cosmic/CosmicModel` | 只覆写 `getRenderTypes` 的 BakedModel 包装器 |
+| `META-INF/accesstransformer.cfg` | 放开 `RenderType.create`（状态常量走反射，见下） |
+
+**回退链**：着色器没编译成功 → `CosmicShaders.get()` 返回 null →
+`CosmicRenderTypes` 返回 null → `CosmicModel` 用原版 RenderType →
+显示生成器烘出来的静态星空贴图。整个过程不会把物品画坏。
+总开关：`-Dstar_sword.fx.cosmic=false`。
