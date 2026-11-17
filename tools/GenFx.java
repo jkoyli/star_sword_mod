@@ -174,7 +174,35 @@ public final class GenFx {
             }
         }
 
-        /* ---- 3. 轮廓外的软光晕（画在留白里，最远 MARGIN 像素）---- */
+        /* ---- 3. 轮廓外的软光晕 ----
+           关键：只有"从画布边界连通到外面"的透明像素才算外部。
+           剑身内部的镂空缝隙如果也吃到泛光，就会被填成不透明，等于**改了形状**。 */
+        boolean[][] outside = new boolean[FRAME][FRAME];
+        {
+            java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+            for (int i = 0; i < FRAME; i++) {
+                for (int[] p : new int[][] {{i, 0}, {i, FRAME - 1}, {0, i}, {FRAME - 1, i}}) {
+                    if (!opaque[p[1]][p[0]] && !outside[p[1]][p[0]]) {
+                        outside[p[1]][p[0]] = true;
+                        queue.add(p);
+                    }
+                }
+            }
+            while (!queue.isEmpty()) {
+                int[] p = queue.poll();
+                int px = p[0];
+                int py = p[1];
+                int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                for (int[] d : dirs) {
+                    int nx = px + d[0];
+                    int ny = py + d[1];
+                    if (nx < 0 || ny < 0 || nx >= FRAME || ny >= FRAME) continue;
+                    if (opaque[ny][nx] || outside[ny][nx]) continue;
+                    outside[ny][nx] = true;
+                    queue.add(new int[] {nx, ny});
+                }
+            }
+        }
         double[][] glow = new double[FRAME][FRAME];
         for (int y = 0; y < FRAME; y++) {
             for (int x = 0; x < FRAME; x++) {
@@ -188,13 +216,9 @@ public final class GenFx {
                         if (d < best) best = d;
                     }
                 }
-                if (best > MARGIN) {
-                    glow[y][x] = 0;
-                } else {
-                    // 1 - (d/MARGIN)^2：贴着轮廓最亮，向外快速衰减
-                    double k = Math.pow(1 - best / MARGIN, 1.35);
-                    glow[y][x] = k * k;
-                }
+                // 泛光会往剑身外侧加像素，等于改了轮廓——形状是硬约束，所以直接关掉。
+                // "发光"改由描边配色 + 原版 glint 光晕来给。
+                glow[y][x] = 0;
 
             }
         }
@@ -239,7 +263,7 @@ public final class GenFx {
                     int got = check.getRGB(x, f * FRAME + y);
                     // 形状是硬约束：每个像素的"有/无"必须和原图完全一致
                     boolean gotOpaque = ((got >>> 24) & 255) != 0;
-                    boolean wantOpaque = opaque[y][x] || glow[y][x] > 0.002;
+                    boolean wantOpaque = opaque[y][x] || (outside[y][x] && glow[y][x] > 0.002);
                     if (gotOpaque != wantOpaque) badBorder++;
                     if (locked[y][x] && got != (0xFF000000 | edgePixel(x, y, base[y][x]))) badBorder++;
                 }
@@ -488,10 +512,10 @@ public final class GenFx {
         double u = (x - MARGIN + 0.5) / SCALE;
         double v = (y - MARGIN + 0.5) / SCALE;
         double s01 = clamp01((((u - v) * 0.70710678) + 11.0) / 22.0);
-        int c = lerp(0xe6fdff, 0x2f9fc4, smooth(0.0, 1.0, s01));
+        int c = lerp(0xa8ecff, 0x2a8cae, smooth(0.0, 1.0, s01));
         // 用原图的明暗当"体积"：形状不动、色相换成冷青，但高光/暗部结构保留下来，
         // 否则整把剑会变成一个平涂的剪影，没有厚度。
-        double shade = 0.55 + 0.95 * lum(original);
+        double shade = 0.42 + 1.00 * lum(original);
         return scaleRgb(c, shade);
     }
     /**
