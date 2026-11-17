@@ -124,6 +124,15 @@ public final class CosmicShaders {
         if (!ENABLED) {
             return;
         }
+        try {
+            wrapModels(event);
+        } catch (Throwable t) {
+            // 烘焙阶段抛异常会把整个启动带崩，这里必须兜住
+            LOGGER.error("[star_sword] cosmic: failed to wrap model", t);
+        }
+    }
+
+    private static void wrapModels(ModelEvent.ModifyBakingResult event) {
         String namespace = StarSwordMod.MOD_ID;
         int wrapped = 0;
         StringBuilder seen = new StringBuilder();
