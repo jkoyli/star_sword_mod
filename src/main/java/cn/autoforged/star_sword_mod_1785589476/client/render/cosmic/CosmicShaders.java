@@ -1,6 +1,8 @@
 package cn.autoforged.star_sword_mod_1785589476.client.render.cosmic;
 
 import cn.autoforged.star_sword_mod_1785589476.StarSwordMod;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.renderer.ShaderInstance;
@@ -37,6 +39,9 @@ public final class CosmicShaders {
     /** 注册失败标记：着色器编译不出来时不要每次都重试，也不要让渲染层以为可画。 */
     private static volatile boolean failed;
 
+    /** 用真正的 logger：System.out 在这个整合包里不会被写进 latest.log，之前所有诊断都白打了。 */
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private static ShaderInstance cosmic;
 
     private CosmicShaders() {
@@ -71,13 +76,12 @@ public final class CosmicShaders {
                     new ShaderInstance(event.getResourceProvider(), id, DefaultVertexFormat.NEW_ENTITY),
                     shader -> {
                         cosmic = shader;
-                        System.out.println("[star_sword] cosmic shader registered: " + id);
+                        LOGGER.info("[star_sword] cosmic shader registered: {}", id);
                     });
         } catch (Throwable throwable) {
             failed = true;
             cosmic = null;
-            System.err.println("[star_sword] cosmic 着色器注册失败，已回退原版渲染："
-                    + throwable);
+            LOGGER.error("[star_sword] cosmic 着色器注册失败，已回退原版渲染", throwable);
         }
     }
 
@@ -140,10 +144,9 @@ public final class CosmicShaders {
             wrapped++;
         }
         if (wrapped == 0) {
-            System.err.println("[star_sword] cosmic: no baked model matched; mod models seen:" + seen);
+            LOGGER.error("[star_sword] cosmic: no baked model matched; mod models seen:{}", seen);
         } else {
-            System.out.println("[star_sword] cosmic: wrapped " + wrapped + " model(s), shader="
-                    + (cosmic != null));
+            LOGGER.info("[star_sword] cosmic: wrapped {} model(s), shader={}", wrapped, cosmic != null);
         }
     }
 }

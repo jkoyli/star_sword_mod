@@ -1,6 +1,8 @@
 package cn.autoforged.star_sword_mod_1785589476.client.render.cosmic;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
@@ -19,6 +21,8 @@ import java.lang.reflect.Field;
  */
 public final class CosmicRenderTypes {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private static RenderType cosmic;
     private static boolean failed;
 
@@ -35,8 +39,7 @@ public final class CosmicRenderTypes {
                 cosmic = create();
             } catch (Throwable t) {
                 failed = true;
-                System.err.println("[star_sword] cosmic RenderType disabled:");
-                t.printStackTrace();
+                LOGGER.error("[star_sword] cosmic RenderType disabled", t);
                 return null;
             }
         }
